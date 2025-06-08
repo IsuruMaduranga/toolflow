@@ -58,6 +58,7 @@ def test_openai_integration():
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
         tools=[divide],
+        max_tool_calls=5,
     )
     assert response.choices[0].message.content is not None
 

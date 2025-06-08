@@ -118,9 +118,7 @@ class CompletionsWrapper:
                 tool_calls = response.choices[0].message.tool_calls
                 if tool_calls:
                     messages.append(response.choices[0].message)
-                    exexution_response = self._execute_tools(
-                        tool_functions, tool_calls, max_tool_calls, **kwargs
-                    )
+                    exexution_response = self._execute_tools(tool_functions, tool_calls)
                     max_tool_calls -= len(exexution_response)
                     messages.extend(exexution_response)
                 else:
@@ -138,9 +136,7 @@ class CompletionsWrapper:
     def _execute_tools(
         self, 
         tool_functions: Dict[str, Callable],
-        tool_calls: List[Dict[str, Any]],
-        max_tool_calls: int,
-        **original_kwargs
+        tool_calls: List[Dict[str, Any]]
     ):
         """Execute tool calls and create a new response with results."""
         
