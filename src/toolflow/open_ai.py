@@ -1,5 +1,13 @@
 from typing import Any, Dict, List, Callable, Iterator, AsyncIterator, Union
+from toolflow.decorators import tool
 import json
+
+try:
+    from pydantic import BaseModel
+    PYDANTIC_AVAILABLE = True
+except ImportError:
+    PYDANTIC_AVAILABLE = False
+    BaseModel = None
 
 try:
     import openai
@@ -124,7 +132,25 @@ class CompletionsWrapper:
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
+        response_format = kwargs.get('response_format', None)
         stream = kwargs.get('stream', False)
+
+        # Dynamically add response_format to kwargs if it's a Pydantic model
+        if response_format:
+            # check if response_format is a Pydantic model
+            if not (hasattr(response_format, "__annotations__") and hasattr(response_format, "model_validate")):
+                raise ValueError("response_format must be a Pydantic model")
+            
+            # Create a dynamic response tool
+            response_tool = self._create_response_tool(response_format)
+            
+            # Add the response tool to the tools list
+            if tools is None:
+                tools = []
+            else:
+                tools = list(tools)  # Make a copy to avoid modifying the original
+            tools.append(response_tool)
+            
         
         # Handle streaming
         if stream:
@@ -135,7 +161,7 @@ class CompletionsWrapper:
                 parallel_tool_execution=parallel_tool_execution,
                 max_tool_calls=max_tool_calls,
                 max_workers=max_workers,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
             )
         
         response = None
@@ -160,11 +186,17 @@ class CompletionsWrapper:
                     model=model,
                     messages=messages,
                     tools=tool_schemas,
-                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
-                if tool_calls:
+                if  tool_calls and tool_calls[0].function.name == "response_tool_internal":
+                        # Parse the arguments and extract the actual response data
+                        args = json.loads(tool_calls[0].function.arguments)
+                        # The response data is nested under the 'response' key
+                        response_data = args.get('response', args)
+                        return response_format.model_validate(response_data)
+                elif tool_calls:
                     messages.append(response.choices[0].message)
                     execution_response = self._execute_tools(
                         tool_functions, 
@@ -185,6 +217,19 @@ class CompletionsWrapper:
             )
         
         return response
+
+    def _create_response_tool(self, response_format):
+        """Create a dynamic response tool for structured output."""
+        @tool
+        def response_tool_internal(response: response_format) -> str:
+            f"""
+            You must call this tool to provide your final response.
+            Because user expects the final response in `{response_format.__name__}` format.
+            This tool must be your last tool call.
+            """
+            pass
+
+        return response_tool_internal
 
     def _execute_tools(
         self, 
