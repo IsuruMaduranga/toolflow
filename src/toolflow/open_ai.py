@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Callable
+from typing import Any, Dict, List, Callable, Iterator, AsyncIterator, Union
 import json
 
 try:
@@ -105,7 +105,7 @@ class CompletionsWrapper:
         model: str,
         messages: List[Dict[str, Any]],
         **kwargs
-    ):
+    ) -> Union[Any, Iterator[Any]]:
         """
         Create a chat completion with tool support.
         
@@ -114,15 +114,29 @@ class CompletionsWrapper:
             parallel_tool_execution: Whether to execute multiple tool calls in parallel (default: False)
             max_tool_calls: Maximum number of tool calls to execute
             max_workers: Maximum number of worker threads to use for parallel execution of sync tools
+            stream: Whether to stream the response (default: False)
             **kwargs: All other OpenAI chat completion parameters
         
         Returns:
-            OpenAI ChatCompletion response, potentially with tool results
+            OpenAI ChatCompletion response, potentially with tool results, or Iterator if stream=True
         """
         tools = kwargs.get('tools', None)
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 5)
         max_workers = kwargs.get('max_workers', 10)
+        stream = kwargs.get('stream', False)
+        
+        # Handle streaming
+        if stream:
+            return self._create_streaming(
+                model=model,
+                messages=messages,
+                tools=tools,
+                parallel_tool_execution=parallel_tool_execution,
+                max_tool_calls=max_tool_calls,
+                max_workers=max_workers,
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+            )
         
         response = None
         if tools:
@@ -229,6 +243,144 @@ class CompletionsWrapper:
             ordered_results = [call_id_to_result[tool_call.id] for tool_call in tool_calls]
             
             return ordered_results
+
+    def _create_streaming(
+        self,
+        model: str,
+        messages: List[Dict[str, Any]],
+        tools: List[Callable] = None,
+        parallel_tool_execution: bool = False,
+        max_tool_calls: int = 5,
+        max_workers: int = 10,
+        **kwargs
+    ) -> Iterator[Any]:
+        """
+        Create a streaming chat completion with tool support.
+        
+        This method handles streaming responses while still supporting tool calls.
+        When tool calls are detected in the stream, they are accumulated, executed,
+        and then the conversation continues with a new streaming call.
+        """
+        def streaming_generator():
+            current_messages = messages.copy()
+            remaining_tool_calls = max_tool_calls
+            
+            while True:
+                if remaining_tool_calls <= 0:
+                    raise Exception("Max tool calls reached without finding a solution")
+                
+                if tools:
+                    tool_functions = {}
+                    tool_schemas = []
+                    
+                    for tool in tools:
+                        if isinstance(tool, Callable) and hasattr(tool, '_tool_metadata'):
+                            tool_schemas.append(tool._tool_metadata)
+                            tool_functions[tool._tool_metadata['function']['name']] = tool
+                        else:
+                            raise ValueError(f"Only decorated functions via @tool are supported. Got {type(tool)}")
+                    
+                    # Make streaming API call with tools
+                    stream = self._original_completions.create(
+                        model=model,
+                        messages=current_messages,
+                        tools=tool_schemas,
+                        stream=True,
+                        **kwargs
+                    )
+                else:
+                    # Make streaming API call without tools
+                    stream = self._original_completions.create(
+                        model=model,
+                        messages=current_messages,
+                        stream=True,
+                        **kwargs
+                    )
+                
+                # Accumulate the streamed response and detect tool calls
+                accumulated_content = ""
+                accumulated_tool_calls = []
+                message_dict = {"role": "assistant", "content": ""}
+                
+                for chunk in stream:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta
+                        
+                        # Yield the chunk for streaming output
+                        yield chunk
+                        
+                        # Accumulate content
+                        if delta.content:
+                            accumulated_content += delta.content
+                            message_dict["content"] += delta.content
+                        
+                        # Accumulate tool calls
+                        if delta.tool_calls:
+                            for tool_call_delta in delta.tool_calls:
+                                # Ensure we have enough space in accumulated_tool_calls
+                                while len(accumulated_tool_calls) <= tool_call_delta.index:
+                                    accumulated_tool_calls.append({
+                                        "id": "",
+                                        "type": "function",
+                                        "function": {"name": "", "arguments": ""}
+                                    })
+                                
+                                # Update the tool call at the correct index
+                                if tool_call_delta.id:
+                                    accumulated_tool_calls[tool_call_delta.index]["id"] = tool_call_delta.id
+                                if tool_call_delta.function:
+                                    if tool_call_delta.function.name:
+                                        accumulated_tool_calls[tool_call_delta.index]["function"]["name"] = tool_call_delta.function.name
+                                    if tool_call_delta.function.arguments:
+                                        accumulated_tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
+                
+                # Check if we have tool calls to execute
+                if accumulated_tool_calls and tools:
+                    # Convert accumulated tool calls to proper format
+                    tool_calls = []
+                    for tc in accumulated_tool_calls:
+                        if tc["id"] and tc["function"]["name"]:  # Only add complete tool calls
+                            tool_call = type('ToolCall', (), {
+                                'id': tc["id"],
+                                'function': type('Function', (), {
+                                    'name': tc["function"]["name"],
+                                    'arguments': tc["function"]["arguments"]
+                                })()
+                            })()
+                            tool_calls.append(tool_call)
+                    
+                    if tool_calls:
+                        # Add assistant message with tool calls
+                        message_dict["tool_calls"] = [
+                            {
+                                "id": tc.id,
+                                "type": "function", 
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments
+                                }
+                            }
+                            for tc in tool_calls
+                        ]
+                        current_messages.append(message_dict)
+                        
+                        # Execute tools
+                        execution_response = self._execute_tools(
+                            tool_functions,
+                            tool_calls,
+                            parallel_tool_execution,
+                            max_workers=max_workers
+                        )
+                        remaining_tool_calls -= len(execution_response)
+                        current_messages.extend(execution_response)
+                        
+                        # Continue the loop to get the next response
+                        continue
+                
+                # No tool calls, we're done
+                break
+        
+        return streaming_generator()
     
     def __getattr__(self, name):
         """Delegate all other attributes to the original completions."""
@@ -273,7 +425,7 @@ class CompletionsAsyncWrapper:
         model: str,
         messages: List[Dict[str, Any]],
         **kwargs
-    ):
+    ) -> Union[Any, AsyncIterator[Any]]:
         """
         Create a chat completion with tool support (async).
         
@@ -282,15 +434,29 @@ class CompletionsAsyncWrapper:
             parallel_tool_execution: Whether to execute multiple tool calls in parallel (default: False)
             max_tool_calls: Maximum number of tool calls to execute
             max_workers: Maximum number of worker threads to use for parallel execution of sync tools
+            stream: Whether to stream the response (default: False)
             **kwargs: All other OpenAI chat completion parameters
         
         Returns:
-            OpenAI ChatCompletion response, potentially with tool results
+            OpenAI ChatCompletion response, potentially with tool results, or AsyncIterator if stream=True
         """
         tools = kwargs.get('tools', None)
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 5)
         max_workers = kwargs.get('max_workers', 10)
+        stream = kwargs.get('stream', False)
+
+        # Handle streaming
+        if stream:
+            return self._create_streaming(
+                model=model,
+                messages=messages,
+                tools=tools,
+                parallel_tool_execution=parallel_tool_execution,
+                max_tool_calls=max_tool_calls,
+                max_workers=max_workers,
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+            )
 
         response = None
         if tools:
@@ -478,6 +644,139 @@ class CompletionsAsyncWrapper:
                 raise Exception(f"Error in parallel tool execution: {e}")
         
         return []
+
+    async def _create_streaming(
+        self,
+        model: str,
+        messages: List[Dict[str, Any]],
+        tools: List[Callable] = None,
+        parallel_tool_execution: bool = False,
+        max_tool_calls: int = 5,
+        max_workers: int = 10,
+        **kwargs
+    ) -> AsyncIterator[Any]:
+        """
+        Create an async streaming chat completion with tool support.
+        
+        This method handles streaming responses while still supporting tool calls.
+        When tool calls are detected in the stream, they are accumulated, executed,
+        and then the conversation continues with a new streaming call.
+        """
+        current_messages = messages.copy()
+        remaining_tool_calls = max_tool_calls
+        
+        while True:
+            if remaining_tool_calls <= 0:
+                raise Exception("Max tool calls reached without finding a solution")
+            
+            if tools:
+                tool_functions = {}
+                tool_schemas = []
+                
+                for tool in tools:
+                    if isinstance(tool, Callable) and hasattr(tool, '_tool_metadata'):
+                        tool_schemas.append(tool._tool_metadata)
+                        tool_functions[tool._tool_metadata['function']['name']] = tool
+                    else:
+                        raise ValueError(f"Only decorated functions via @tool are supported. Got {type(tool)}")
+                
+                # Make streaming API call with tools
+                stream = await self._original_completions.create(
+                    model=model,
+                    messages=current_messages,
+                    tools=tool_schemas,
+                    **kwargs
+                )
+            else:
+                # Make streaming API call without tools
+                stream = await self._original_completions.create(
+                    model=model,
+                    messages=current_messages,
+                    **kwargs
+                )
+            
+            # Accumulate the streamed response and detect tool calls
+            accumulated_content = ""
+            accumulated_tool_calls = []
+            message_dict = {"role": "assistant", "content": ""}
+            
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    
+                    # Yield the chunk for streaming output
+                    yield chunk
+                    
+                    # Accumulate content
+                    if delta.content:
+                        accumulated_content += delta.content
+                        message_dict["content"] += delta.content
+                    
+                    # Accumulate tool calls
+                    if delta.tool_calls:
+                        for tool_call_delta in delta.tool_calls:
+                            # Ensure we have enough space in accumulated_tool_calls
+                            while len(accumulated_tool_calls) <= tool_call_delta.index:
+                                accumulated_tool_calls.append({
+                                    "id": "",
+                                    "type": "function",
+                                    "function": {"name": "", "arguments": ""}
+                                })
+                            
+                            # Update the tool call at the correct index
+                            if tool_call_delta.id:
+                                accumulated_tool_calls[tool_call_delta.index]["id"] = tool_call_delta.id
+                            if tool_call_delta.function:
+                                if tool_call_delta.function.name:
+                                    accumulated_tool_calls[tool_call_delta.index]["function"]["name"] = tool_call_delta.function.name
+                                if tool_call_delta.function.arguments:
+                                    accumulated_tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
+            
+            # Check if we have tool calls to execute
+            if accumulated_tool_calls and tools:
+                # Convert accumulated tool calls to proper format
+                tool_calls = []
+                for tc in accumulated_tool_calls:
+                    if tc["id"] and tc["function"]["name"]:  # Only add complete tool calls
+                        tool_call = type('ToolCall', (), {
+                            'id': tc["id"],
+                            'function': type('Function', (), {
+                                'name': tc["function"]["name"],
+                                'arguments': tc["function"]["arguments"]
+                            })()
+                        })()
+                        tool_calls.append(tool_call)
+                
+                if tool_calls:
+                    # Add assistant message with tool calls
+                    message_dict["tool_calls"] = [
+                        {
+                            "id": tc.id,
+                            "type": "function", 
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        }
+                        for tc in tool_calls
+                    ]
+                    current_messages.append(message_dict)
+                    
+                    # Execute tools
+                    execution_response = await self._execute_tools(
+                        tool_functions,
+                        tool_calls,
+                        parallel_tool_execution,
+                        max_workers=max_workers
+                    )
+                    remaining_tool_calls -= len(execution_response)
+                    current_messages.extend(execution_response)
+                    
+                    # Continue the loop to get the next response
+                    continue
+            
+            # No tool calls, we're done
+            break
     
     def __getattr__(self, name):
         """Delegate all other attributes to the original completions."""
