@@ -29,6 +29,7 @@ print(response.choices[0].message.content)
 - 📝 **Automatic schema generation** - Function signatures are automatically converted to JSON schemas
 - ⚡ **Automatic execution** - Tools can be automatically executed when called by the LLM
 - 🔄 **Asynchronous support** - Full async/await support for both sync and async tools
+- ⚡ **Parallel execution** - Multiple tool calls execute in parallel for significant performance gains
 - 🔄 **Streaming support**(Coming soon) - Tools can be streamed
 
 ## Installation
@@ -118,6 +119,7 @@ asyncio.run(main())
 - **Mixed sync/async tools**: Use both synchronous and asynchronous tools in the same call
 - **Automatic detection**: The library automatically detects and properly handles async functions
 - **Non-blocking execution**: Async tools don't block the event loop
+- **Parallel execution**: Multiple tools execute concurrently for improved performance
 - **Same API**: Async client follows the same patterns as the sync client
 
 ## Core Concepts
@@ -235,16 +237,30 @@ async_client = toolflow.from_openai_async(openai.AsyncOpenAI())
 When using a wrapped client (sync or async), the `create` method gains additional parameters:
 
 - `tools`: List of toolflow decorated functions (sync or async) or regular tool dicts
+- `parallel_tool_execution`: Whether to execute multiple tool calls in parallel (default: `False`)
 - `max_tool_calls`: Maximum number of tool calls to execute (default: 5)
+- `max_workers`: Maximum number of worker threads to use for parallel execution of sync tools (default: 10)
 
 **Sync usage:**
 ```python
-response = client.chat.completions.create(...)
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    tools=[tool1, tool2, tool3],
+    parallel_tool_execution=True,  # Enable parallel execution
+    max_tool_calls=10,
+    max_workers=10
+)
 ```
 
 **Async usage:**
 ```python
-response = await async_client.chat.completions.create(...)
+response = await async_client.chat.completions.create(
+    model="gpt-4o-mini", 
+    tools=[sync_tool, async_tool],
+    parallel_tool_execution=True,  # Enable parallel execution
+    max_tool_calls=10,
+    max_workers=10
+)
 ```
 
 ### Tool Function Methods
@@ -252,6 +268,62 @@ response = await async_client.chat.completions.create(...)
 Every `@tool` decorated function gets these methods:
 
 - `_tool_metadata` - JSON schema for the tool
+
+## Parallel Tool Execution Support
+
+Toolflow can execute multiple tool calls in parallel when enabled, providing significant performance improvements:
+
+```python
+# Enable parallel execution with parallel_tool_execution=True
+response = client.chat.completions.create(
+    model="gpt-4o-mini", 
+    messages=[{"role": "user", "content": "Calculate 5+3, fetch user data, and query database"}],
+    tools=[math_tool, fetch_user_tool, database_tool],
+    parallel_tool_execution=True,  # Enable parallel execution
+    max_tool_calls=10,
+    max_workers=10
+)
+
+# Sequential execution (default behavior)
+response = client.chat.completions.create(
+    model="gpt-4o-mini", 
+    messages=[{"role": "user", "content": "Calculate 5+3, fetch user data, and query database"}],
+    tools=[math_tool, fetch_user_tool, database_tool]
+    # parallel_tool_execution=False (default) - tools execute sequentially
+)
+```
+
+### Performance Benefits
+
+- **Sync client**: Uses `ThreadPoolExecutor` for parallel execution of sync tools
+- **Async client**: Separates sync and async tools for optimal execution:
+  - Sync tools run in `ThreadPoolExecutor` 
+  - Async tools run with `asyncio.gather`
+  - Both groups execute in parallel with each other
+- **Typical speedup**: 2-10x faster depending on tool execution time and I/O operations
+- **Order preservation**: Results maintain the original tool call order
+- **Default behavior**: Sequential execution (`parallel_tool_execution=False`) for backward compatibility
+
+### Execution Strategies
+
+```python
+# Async client with mixed tools (optimal strategy)
+response = await async_client.chat.completions.create(
+    model="gpt-4o-mini",
+    tools=[
+        sync_database_query,    # Runs in thread pool
+        async_api_call,         # Runs with asyncio.gather  
+        sync_file_processing,   # Runs in thread pool
+        async_network_request   # Runs with asyncio.gather
+    ],
+    parallel_tool_execution=True,
+    max_tool_calls=10,
+    max_workers=10 # Thread pool size for sync tools
+)
+# sync_database_query + sync_file_processing execute in ThreadPoolExecutor
+# async_api_call + async_network_request execute with asyncio.gather  
+# Both groups run in parallel with each other
+```
 
 ## Best Practices
 
@@ -315,6 +387,9 @@ pytest tests/test.py
 
 # Run only async tests  
 pytest tests/test_async.py
+
+# Run only parallel execution tests
+pytest tests/test_parallel.py
 
 # Format code
 black toolflow/

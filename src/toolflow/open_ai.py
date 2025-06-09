@@ -111,15 +111,18 @@ class CompletionsWrapper:
         
         Args:
             tools: List of toolflow decorated functions or OpenAI tool dicts
-            auto_execute: Whether to automatically execute tool calls
+            parallel_tool_execution: Whether to execute multiple tool calls in parallel (default: False)
             max_tool_calls: Maximum number of tool calls to execute
+            max_workers: Maximum number of worker threads to use for parallel execution of sync tools
             **kwargs: All other OpenAI chat completion parameters
         
         Returns:
             OpenAI ChatCompletion response, potentially with tool results
         """
         tools = kwargs.get('tools', None)
+        parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 5)
+        max_workers = kwargs.get('max_workers', 10)
         
         response = None
         if tools:
@@ -143,15 +146,20 @@ class CompletionsWrapper:
                     model=model,
                     messages=messages,
                     tools=tool_schemas,
-                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'max_tool_calls']}
+                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
                 if tool_calls:
                     messages.append(response.choices[0].message)
-                    exexution_response = self._execute_tools(tool_functions, tool_calls)
-                    max_tool_calls -= len(exexution_response)
-                    messages.extend(exexution_response)
+                    execution_response = self._execute_tools(
+                        tool_functions, 
+                        tool_calls, 
+                        parallel_tool_execution,
+                        max_workers=max_workers
+                    )
+                    max_tool_calls -= len(execution_response)
+                    messages.extend(execution_response)
                 else:
                     return response
 
@@ -159,7 +167,7 @@ class CompletionsWrapper:
             response = self._original_completions.create(
                 model=model,
                 messages=messages,
-                **kwargs
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
             )
         
         return response
@@ -167,37 +175,60 @@ class CompletionsWrapper:
     def _execute_tools(
         self, 
         tool_functions: Dict[str, Callable],
-        tool_calls: List[Dict[str, Any]]
+        tool_calls: List[Dict[str, Any]],
+        parallel_tool_execution: bool = False,
+        max_workers: int = 10
     ):
-        """Execute tool calls and create a new response with results."""
+        """Execute tool calls sequentially or in parallel based on the parallel_tool_execution flag."""
         
-        execution_response = []
-        
-        # Execute each tool call sequentially
-        for tool_call in tool_calls:
+        def execute_single_tool(tool_call):
+            """Execute a single tool call."""
             tool_name = tool_call.function.name
             tool_args = tool_call.function.arguments
             
-            tool_result = None
             tool_function = tool_functions.get(tool_name, None)
-            if tool_function:
-                try:
-                    # Parse JSON arguments and call the function directly
-                    parsed_args = json.loads(tool_args) if tool_args else {}
-                    result = tool_function(**parsed_args)
-                    tool_result = {
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "content": json.dumps(result) if not isinstance(result, str) else result
-                    }
-                except Exception as e:
-                    raise Exception(f"Error executing tool {tool_name}: {e}")
-            else:
+            if not tool_function:
                 raise ValueError(f"Tool {tool_name} not found")
             
-            execution_response.append(tool_result)
+            try:
+                # Parse JSON arguments and call the function directly
+                parsed_args = json.loads(tool_args) if tool_args else {}
+                result = tool_function(**parsed_args)
+                return {
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "content": json.dumps(result) if not isinstance(result, str) else result
+                }
+            except Exception as e:
+                raise Exception(f"Error executing tool {tool_name}: {e}")
         
-        return execution_response
+        # Sequential execution
+        if not parallel_tool_execution or len(tool_calls) == 1:
+            return [execute_single_tool(tool_call) for tool_call in tool_calls]
+        
+        # Parallel execution using ThreadPoolExecutor
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(tool_calls), max_workers)) as executor:
+            future_to_tool_call = {
+                executor.submit(execute_single_tool, tool_call): tool_call 
+                for tool_call in tool_calls
+            }
+            
+            execution_response = []
+            for future in concurrent.futures.as_completed(future_to_tool_call):
+                tool_call = future_to_tool_call[future]
+                try:
+                    result = future.result()
+                    execution_response.append(result)
+                except Exception as e:
+                    # Re-raise with tool context
+                    raise Exception(f"Error in parallel tool execution: {e}")
+            
+            # Sort results to maintain order of tool_calls
+            call_id_to_result = {result["tool_call_id"]: result for result in execution_response}
+            ordered_results = [call_id_to_result[tool_call.id] for tool_call in tool_calls]
+            
+            return ordered_results
     
     def __getattr__(self, name):
         """Delegate all other attributes to the original completions."""
@@ -248,16 +279,19 @@ class CompletionsAsyncWrapper:
         
         Args:
             tools: List of toolflow decorated functions or OpenAI tool dicts
-            auto_execute: Whether to automatically execute tool calls
+            parallel_tool_execution: Whether to execute multiple tool calls in parallel (default: False)
             max_tool_calls: Maximum number of tool calls to execute
+            max_workers: Maximum number of worker threads to use for parallel execution of sync tools
             **kwargs: All other OpenAI chat completion parameters
         
         Returns:
             OpenAI ChatCompletion response, potentially with tool results
         """
         tools = kwargs.get('tools', None)
+        parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 5)
-        
+        max_workers = kwargs.get('max_workers', 10)
+
         response = None
         if tools:
             tool_functions = {}
@@ -280,13 +314,18 @@ class CompletionsAsyncWrapper:
                     model=model,
                     messages=messages,
                     tools=tool_schemas,
-                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'max_tool_calls']}
+                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
                 if tool_calls:
                     messages.append(response.choices[0].message)
-                    execution_response = await self._execute_tools(tool_functions, tool_calls)
+                    execution_response = await self._execute_tools(
+                        tool_functions, 
+                        tool_calls, 
+                        parallel_tool_execution,
+                        max_workers=max_workers
+                    )
                     max_tool_calls -= len(execution_response)
                     messages.extend(execution_response)
                 else:
@@ -296,7 +335,7 @@ class CompletionsAsyncWrapper:
             response = await self._original_completions.create(
                 model=model,
                 messages=messages,
-                **kwargs
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls']}
             )
         
         return response
@@ -304,44 +343,141 @@ class CompletionsAsyncWrapper:
     async def _execute_tools(
         self, 
         tool_functions: Dict[str, Callable],
-        tool_calls: List[Dict[str, Any]]
+        tool_calls: List[Dict[str, Any]],
+        parallel_tool_execution: bool = False,
+        max_workers: int = 10
     ):
-        """Execute tool calls and create a new response with results (async)."""
+        """Execute tool calls sequentially or in parallel, separating sync and async tools."""
+        import asyncio
+        import concurrent.futures
         
-        execution_response = []
-        
-        # Execute each tool call sequentially
-        for tool_call in tool_calls:
+        async def execute_single_tool(tool_call):
+            """Execute a single tool call (async)."""
             tool_name = tool_call.function.name
             tool_args = tool_call.function.arguments
             
-            tool_result = None
             tool_function = tool_functions.get(tool_name, None)
-            if tool_function:
-                try:
-                    # Parse JSON arguments and call the function
-                    parsed_args = json.loads(tool_args) if tool_args else {}
-                    
-                    # Check if the tool function is async
-                    import asyncio
-                    if asyncio.iscoroutinefunction(tool_function):
-                        result = await tool_function(**parsed_args)
-                    else:
-                        result = tool_function(**parsed_args)
-                    
-                    tool_result = {
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "content": json.dumps(result) if not isinstance(result, str) else result
-                    }
-                except Exception as e:
-                    raise Exception(f"Error executing tool {tool_name}: {e}")
-            else:
+            if not tool_function:
                 raise ValueError(f"Tool {tool_name} not found")
             
-            execution_response.append(tool_result)
+            try:
+                # Parse JSON arguments and call the function
+                parsed_args = json.loads(tool_args) if tool_args else {}
+                
+                # Check if the tool function is async
+                if asyncio.iscoroutinefunction(tool_function):
+                    result = await tool_function(**parsed_args)
+                else:
+                    # Run sync functions in thread pool to avoid blocking event loop
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(None, lambda: tool_function(**parsed_args))
+                
+                return {
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "content": json.dumps(result) if not isinstance(result, str) else result
+                }
+            except Exception as e:
+                raise Exception(f"Error executing tool {tool_name}: {e}")
         
-        return execution_response
+        # Sequential execution
+        if not parallel_tool_execution or len(tool_calls) == 1:
+            return [await execute_single_tool(tool_call) for tool_call in tool_calls]
+        
+        # Parallel execution: separate sync and async tools for optimal performance
+        sync_tools = []
+        async_tools = []
+        
+        for tool_call in tool_calls:
+            tool_name = tool_call.function.name
+            tool_function = tool_functions.get(tool_name)
+            if tool_function and asyncio.iscoroutinefunction(tool_function):
+                async_tools.append(tool_call)
+            else:
+                sync_tools.append(tool_call)
+        
+        # Execute sync and async tools in parallel
+        tasks = []
+        
+        # Run sync tools in thread pool
+        if sync_tools:
+            def execute_sync_tools():
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(sync_tools), max_workers)) as executor:
+                    futures = []
+                    for tool_call in sync_tools:
+                        tool_name = tool_call.function.name
+                        tool_args = tool_call.function.arguments
+                        tool_function = tool_functions[tool_name]
+                        
+                        def execute_sync_tool(tc=tool_call, tf=tool_function):
+                            try:
+                                parsed_args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                                result = tf(**parsed_args)
+                                return {
+                                    "tool_call_id": tc.id,
+                                    "role": "tool",
+                                    "content": json.dumps(result) if not isinstance(result, str) else result
+                                }
+                            except Exception as e:
+                                raise Exception(f"Error executing tool {tc.function.name}: {e}")
+                        
+                        futures.append(executor.submit(execute_sync_tool))
+                    
+                    return [future.result() for future in futures]
+            
+            # Run sync tools in a separate thread pool
+            loop = asyncio.get_event_loop()
+            sync_task = loop.run_in_executor(None, execute_sync_tools)
+            tasks.append(sync_task)
+        
+        # Run async tools with asyncio.gather
+        if async_tools:
+            async def execute_async_tools():
+                async_tasks = []
+                for tool_call in async_tools:
+                    tool_name = tool_call.function.name
+                    tool_function = tool_functions[tool_name]
+                    
+                    async def execute_async_tool(tc=tool_call, tf=tool_function):
+                        try:
+                            parsed_args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                            result = await tf(**parsed_args)
+                            return {
+                                "tool_call_id": tc.id,
+                                "role": "tool",
+                                "content": json.dumps(result) if not isinstance(result, str) else result
+                            }
+                        except Exception as e:
+                            raise Exception(f"Error executing tool {tc.function.name}: {e}")
+                    
+                    async_tasks.append(execute_async_tool())
+                
+                return await asyncio.gather(*async_tasks)
+            
+            tasks.append(execute_async_tools())
+        
+        # Wait for both sync and async tools to complete
+        if tasks:
+            try:
+                results = await asyncio.gather(*tasks)
+                
+                # Flatten results from sync and async execution
+                all_results = []
+                for result_group in results:
+                    if isinstance(result_group, list):
+                        all_results.extend(result_group)
+                    else:
+                        all_results.append(result_group)
+                
+                # Sort results to maintain order of tool_calls
+                call_id_to_result = {result["tool_call_id"]: result for result in all_results}
+                ordered_results = [call_id_to_result[tool_call.id] for tool_call in tool_calls]
+                
+                return ordered_results
+            except Exception as e:
+                raise Exception(f"Error in parallel tool execution: {e}")
+        
+        return []
     
     def __getattr__(self, name):
         """Delegate all other attributes to the original completions."""

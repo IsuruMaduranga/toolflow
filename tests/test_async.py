@@ -92,7 +92,7 @@ class TestAsyncClientMocked:
         self.mock_completions.create.return_value = mock_response
         
         response = await self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Hello"}]
         )
         
@@ -122,7 +122,7 @@ class TestAsyncClientMocked:
         self.mock_completions.create.side_effect = [mock_response_1, mock_response_2]
         
         response = await self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": "What is 10 divided by 2?"}],
             tools=[sync_divide]
         )
@@ -153,7 +153,7 @@ class TestAsyncClientMocked:
         self.mock_completions.create.side_effect = [mock_response_1, mock_response_2]
         
         response = await self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": "What is 15 divided by 3?"}],
             tools=[async_divide]
         )
@@ -195,7 +195,7 @@ class TestAsyncClientMocked:
         self.mock_completions.create.side_effect = [mock_response_1, mock_response_2, mock_response_3]
         
         response = await self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Calculate 4*5 and 20/4"}],
             tools=[multiply, async_divide]
         )
@@ -231,7 +231,7 @@ class TestAsyncClientMocked:
         self.mock_completions.create.side_effect = [mock_response_1, mock_response_2]
         
         response = await self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Calculate 2*3 and 4*5"}],
             tools=[multiply, async_multiply]
         )
@@ -258,7 +258,7 @@ class TestAsyncClientMocked:
         
         with pytest.raises(Exception, match="Max tool calls reached"):
             await self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Test"}],
                 tools=[multiply],
                 max_tool_calls=2
@@ -282,7 +282,7 @@ class TestAsyncClientMocked:
         
         with pytest.raises(Exception, match="Error executing tool sync_divide"):
             await self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Divide by zero"}],
                 tools=[sync_divide]
             )
@@ -305,7 +305,7 @@ class TestAsyncClientMocked:
         
         with pytest.raises(ValueError, match="Tool non_existent_tool not found"):
             await self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Use unknown tool"}],
                 tools=[multiply]
             )
@@ -328,7 +328,7 @@ class TestAsyncClientMocked:
         
         with pytest.raises(Exception, match="Error executing tool multiply"):
             await self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Multiply with bad args"}],
                 tools=[multiply]
             )
