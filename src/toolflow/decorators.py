@@ -35,18 +35,27 @@ def tool(
             return a + b
     """
     def decorator(func: F) -> F:
+        import asyncio
         
         # Add metadata to the function for direct usage
         func._tool_metadata = get_tool_schema(func, name, description)
         
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-        
-        # Copy metadata to wrapper
-        wrapper._tool_metadata = func._tool_metadata
-        
-        return wrapper
+        if asyncio.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                return await func(*args, **kwargs)
+            
+            # Copy metadata to wrapper
+            async_wrapper._tool_metadata = func._tool_metadata
+            return async_wrapper
+        else:
+            @wraps(func)
+            def sync_wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+            
+            # Copy metadata to wrapper
+            sync_wrapper._tool_metadata = func._tool_metadata
+            return sync_wrapper
     
     # If used as @tool (without parentheses)
     if func is not None:
