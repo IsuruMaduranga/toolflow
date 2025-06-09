@@ -122,7 +122,7 @@ class CompletionsWrapper:
         """
         tools = kwargs.get('tools', None)
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
-        max_tool_calls = kwargs.get('max_tool_calls', 5)
+        max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
         stream = kwargs.get('stream', False)
         
@@ -250,7 +250,7 @@ class CompletionsWrapper:
         messages: List[Dict[str, Any]],
         tools: List[Callable] = None,
         parallel_tool_execution: bool = False,
-        max_tool_calls: int = 5,
+        max_tool_calls: int = 10,
         max_workers: int = 10,
         **kwargs
     ) -> Iterator[Any]:
@@ -285,7 +285,6 @@ class CompletionsWrapper:
                         model=model,
                         messages=current_messages,
                         tools=tool_schemas,
-                        stream=True,
                         **kwargs
                     )
                 else:
@@ -293,7 +292,6 @@ class CompletionsWrapper:
                     stream = self._original_completions.create(
                         model=model,
                         messages=current_messages,
-                        stream=True,
                         **kwargs
                     )
                 
@@ -442,7 +440,7 @@ class CompletionsAsyncWrapper:
         """
         tools = kwargs.get('tools', None)
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
-        max_tool_calls = kwargs.get('max_tool_calls', 5)
+        max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
         stream = kwargs.get('stream', False)
 
@@ -651,7 +649,7 @@ class CompletionsAsyncWrapper:
         messages: List[Dict[str, Any]],
         tools: List[Callable] = None,
         parallel_tool_execution: bool = False,
-        max_tool_calls: int = 5,
+        max_tool_calls: int = 10,
         max_workers: int = 10,
         **kwargs
     ) -> AsyncIterator[Any]:

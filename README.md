@@ -30,7 +30,7 @@ print(response.choices[0].message.content)
 - ⚡ **Automatic execution** - Tools can be automatically executed when called by the LLM
 - 🔄 **Asynchronous support** - Full async/await support for both sync and async tools
 - ⚡ **Parallel execution** - Multiple tool calls execute in parallel for significant performance gains
-- 🔄 **Streaming support**(Coming soon) - Tools can be streamed
+- 📡 **Streaming support** - Full streaming support with seamless tool call execution
 
 ## Installation
 
@@ -198,6 +198,108 @@ sync_result = get_weather("New York")
 async_result = await async_weather("New York")
 ```
 
+## Streaming Support
+
+Toolflow fully supports OpenAI's streaming mode with seamless tool execution. Simply add `stream=True` to your completion call:
+
+### Sync Streaming
+
+```python
+import toolflow
+from openai import OpenAI
+
+client = toolflow.from_openai(OpenAI())
+
+@toolflow.tool
+def get_weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"Weather in {city}: Sunny, 72°F"
+
+# Stream the response while supporting tool calls
+stream = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What's the weather in NYC?"}],
+    tools=[get_weather],
+    stream=True  # Enable streaming
+)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+### Async Streaming
+
+```python
+import asyncio
+import toolflow
+from openai import AsyncOpenAI
+
+async_client = toolflow.from_openai_async(AsyncOpenAI())
+
+@toolflow.tool
+async def async_weather(city: str) -> str:
+    """Get weather asynchronously."""
+    await asyncio.sleep(0.1)  # Simulate async operation
+    return f"Weather in {city}: Sunny, 72°F"
+
+async def main():
+    stream = await async_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "What's the weather in Paris?"}],
+        tools=[async_weather],
+        stream=True
+    )
+    
+    async for chunk in stream:
+        if chunk.choices[0].delta.content:
+            print(chunk.choices[0].delta.content, end="")
+
+asyncio.run(main())
+```
+
+### Streaming with Tool Calls
+
+When tools are called during streaming:
+
+1. **Stream continues normally** - Content flows through as usual
+2. **Tool calls are detected** - Accumulated from streaming chunks
+3. **Tools execute automatically** - When tool calls are complete
+4. **Conversation continues** - New streaming response with tool results
+
+```python
+@toolflow.tool
+def calculate(expression: str) -> str:
+    """Calculate a math expression."""
+    return str(eval(expression))
+
+@toolflow.tool  
+def get_weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"Weather in {city}: Sunny, 72°F"
+
+# This will stream the response and execute tools as needed
+stream = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What's 15*8? Also, weather in Tokyo?"}],
+    tools=[calculate, get_weather],
+    parallel_tool_execution=True,  # Tools run in parallel
+    stream=True
+)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+### Key Streaming Features
+
+- **Seamless tool integration** - Tools execute without interrupting the stream flow
+- **Parallel tool execution** - Multiple tools can run concurrently during streaming
+- **Mixed sync/async tools** - Both synchronous and asynchronous tools work in streaming mode
+- **Automatic conversation flow** - Tool results are automatically fed back for continued streaming
+- **No API changes** - Uses standard OpenAI streaming patterns
+
 
 ## API Reference
 
@@ -238,8 +340,9 @@ When using a wrapped client (sync or async), the `create` method gains additiona
 
 - `tools`: List of toolflow decorated functions (sync or async) or regular tool dicts
 - `parallel_tool_execution`: Whether to execute multiple tool calls in parallel (default: `False`)
-- `max_tool_calls`: Maximum number of tool calls to execute (default: 5)
+- `max_tool_calls`: Maximum number of tool calls to execute (default: 10)
 - `max_workers`: Maximum number of worker threads to use for parallel execution of sync tools (default: 10)
+- `stream`: Enable streaming responses (works seamlessly with tool calls)
 
 **Sync usage:**
 ```python
@@ -261,6 +364,34 @@ response = await async_client.chat.completions.create(
     max_tool_calls=10,
     max_workers=10
 )
+```
+
+**Streaming usage (sync):**
+```python
+stream = client.chat.completions.create(
+    model="gpt-4o-mini",
+    tools=[tool1, tool2],
+    stream=True,  # Enable streaming
+    parallel_tool_execution=True
+)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+**Streaming usage (async):**
+```python
+stream = await async_client.chat.completions.create(
+    model="gpt-4o-mini", 
+    tools=[sync_tool, async_tool],
+    stream=True,  # Enable streaming
+    parallel_tool_execution=True
+)
+
+async for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
 ```
 
 ### Tool Function Methods
