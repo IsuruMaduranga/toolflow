@@ -1,6 +1,6 @@
 # Toolflow
 
-A Python library that makes LLM tool calling as simple as decorating a function. Just wrap your OpenAI client and pass decorated functions directly to the `tools` parameter - no complex setup required.
+A No bullshit minimalistic Python library that makes LLM tool calling as simple as decorating a function. Just wrap your AI clients and pass decorated functions directly to the `tools` parameter - no complex setup required.
 
 ```python
 import toolflow

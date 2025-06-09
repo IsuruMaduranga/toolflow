@@ -1,72 +1,50 @@
+"""
+Basic smoke tests for toolflow library.
+
+This module contains simple smoke tests to verify basic functionality.
+More comprehensive tests are in dedicated test modules:
+- test_core_functionality.py: Core decorator and integration tests
+- test_async_functionality.py: Async-specific tests
+- test_parallel_execution.py: Parallel execution tests  
+- test_schema_generation.py: Schema generation and validation
+- test_error_handling.py: Error handling and edge cases
+"""
 import pytest
 from toolflow import tool, from_openai
-import datetime
-import openai
-import os
-from unittest.mock import Mock, patch
 
 
-@tool
-def get_current_time():
-    """Get the current time."""
-    return str(datetime.datetime.now())
-
-
-@tool
-def divide(a: float, b: float) -> float:
-    """Divide two numbers."""
-    return a / b
-
-
-def test_tool_decorator():
-    """Test that the @tool decorator works properly."""
-    # Test that the decorator doesn't break function behavior
-    result = divide(10.0, 2.0)
-    assert result == 5.0
-    
-    # Test that get_current_time returns a string
-    time_result = get_current_time()
-    assert isinstance(time_result, str)
-
-
-def test_divide_function():
-    """Test the divide function."""
-    assert divide(10, 2) == 5.0
-    assert divide(15, 3) == 5.0
-    assert divide(7, 2) == 3.5
-    
-    # Test division by zero
-    with pytest.raises(ZeroDivisionError):
-        divide(10, 0)
-
-
-def test_get_current_time_function():
-    """Test the get_current_time function."""
-    result = get_current_time()
-    assert isinstance(result, str)
-    # Test that it looks like a datetime string
-    assert len(result) > 10  # Basic sanity check
-
-
-@pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set")
-def test_openai_integration():
-    """Test integration with OpenAI API (requires API key)."""
-    client = from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
-    
-    # This is a basic integration test - in a real test environment you'd mock this
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
-        tools=[divide],
-        max_tool_calls=5,
-    )
-    assert response.choices[0].message.content is not None
-
-
-def test_import_functionality():
-    """Test that the toolflow imports work correctly."""
-    from toolflow import tool, from_openai
-    
-    # Basic smoke test - if we get here, imports worked
+def test_smoke_basic_imports():
+    """Smoke test: verify basic imports work."""
     assert tool is not None
     assert from_openai is not None
+
+
+def test_smoke_decorator_works():
+    """Smoke test: verify @tool decorator works."""
+    @tool
+    def add(a: float, b: float) -> float:
+        """Add two numbers."""
+        return a + b
+    
+    # Basic functionality
+    assert add(2, 3) == 5
+    assert hasattr(add, '_tool_metadata')
+    assert add._tool_metadata['function']['name'] == 'add'
+
+
+def test_smoke_async_import():
+    """Smoke test: verify async imports work."""
+    try:
+        from toolflow import from_openai_async
+        assert from_openai_async is not None
+    except ImportError:
+        pytest.skip("Async functionality not available")
+
+
+if __name__ == "__main__":
+    # Quick manual smoke test
+    print("Running smoke tests...")
+    test_smoke_basic_imports()
+    test_smoke_decorator_works()
+    test_smoke_async_import()
+    print("✓ All smoke tests passed!")
