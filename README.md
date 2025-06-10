@@ -1,10 +1,14 @@
 # Toolflow
 
-A minimal Python library for seamless LLM tool usage. Just decorate your functions and pass them directly to a wrapped AI client.
+A minimal Python library for seamless LLM usage.
+- Just decorate your functions and pass them directly to a wrapped AI client for auto tool calling.
+- Just pass a Pydantic model to the API for structured outputs.
+- Drop in replacement for OpenAI sdk. ( Other providers coming soon )
 
 ```python
 import toolflow
 from openai import OpenAI
+from pydantic import BaseModel
 
 # 1. Wrap your client
 client = toolflow.from_openai(OpenAI())
@@ -15,15 +19,31 @@ def get_weather(city: str) -> str:
   """Gets the current weather for a given city."""
   return f"Weather in {city}: Sunny, 72°F"
 
-# 3. Call the API, passing the function directly
+class WeatherReport(BaseModel):
+    city: str
+    weather: str
+    temperature: float
+
+# 4. Call the API, passing the function directly
 response = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What's the weather in NYC?"}],
     tools=[get_weather],
 )
 
-# Toolflow handles the schema generation, execution, and response automatically
+# 5. If you want structured outputs, pass a Pydantic model to the API
+response_structured = client.chat.completions.parse(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What's the weather in NYC?"}],
+    tools=[get_weather],
+    response_format=WeatherReport # Pydantic model for structured output
+)
+
+# 6. Read the outputs
 print(response.choices[0].message.content)
+print(response_structured.choices[0].message.parsed)
+
+# Toolflow handles the schema generation, execution, and response automatically
 # Output: Weather in NYC: Sunny, 72°F
 ```
 
@@ -38,7 +58,7 @@ print(response.choices[0].message.content)
 
 🤝 Async Support: First-class support for async functions and clients, with automatic handling of mixed sync/async tools.
 
-🔧 Provider Support: Works with OpenAI. (Anthropic support coming soon).
+🔧 Structured Outputs: Full support for structured outputs with tool execution ( Using OpenAI's beta API or the toolflow enhanced API)
 
 ## Installation
 
@@ -130,6 +150,47 @@ asyncio.run(main())
 ```
 
 > Note: When using an async client, avoid blocking I/O (like the requests library) in your synchronous tools to prevent blocking the event loop. Or enable `parallel_tool_execution=True` to run sync tools in a thread pool.
+
+### Structured Outputs
+
+Toolflow supports structured outputs with tool execution using OpenAI's beta API or the toolflow enhanced API ( both Sync and Async )
+
+```python
+@toolflow.tool
+def fibonacci(n: int) -> int:
+    """Calculate the nth Fibonacci number."""
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+class Fib(BaseModel):
+    n: int
+    value_of_n_th_fibonacci: int
+
+class FibonacciResponse(BaseModel):
+    fibonacci_numbers: list[Fib]
+
+client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
+
+# Toolflow enhanced API
+response = client.chat.completions.parse(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
+    tools=[fibonacci], # Toolcalling works seamlessly
+    response_format=FibonacciResponse # Pydantic model for structured output
+)
+
+# OpenAI Beta API
+response = client.beta.chat.completions.parse(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
+    tools=[fibonacci],
+    response_format=FibonacciResponse
+)
+
+print(response.choices[0].message.parsed)
+print(response.choices[0].message.content)
+```
 
 ## API Reference
 
