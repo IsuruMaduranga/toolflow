@@ -117,7 +117,7 @@ class BetaChatWrapper:
     
     def __init__(self, client):
         self._client = client
-        self.completions = CompletionsBetaWrapper(client)
+        self.completions = BetaCompletionsWrapper(client)
     
 
 class CompletionsWrapper:
@@ -478,7 +478,7 @@ class CompletionsWrapper:
         """Delegate all other attributes to the original completions."""
         return getattr(self._original_completions, name)
 
-class CompletionsBetaWrapper:
+class BetaCompletionsWrapper:
     """Wrapper around OpenAI beta completions that processes toolflow functions."""
     
     def __init__(self, client):
@@ -513,6 +513,7 @@ class BetaAsyncWrapper:
     def __init__(self, client):
         self._client = client
         self.chat = ChatAsyncWrapper(client)
+        self.beta = BetaCompletionsAsyncWrapper(client)
 
 class ChatAsyncWrapper:
     """Async wrapper around OpenAI chat that handles toolflow functions."""
@@ -951,3 +952,18 @@ class CompletionsAsyncWrapper:
     def __getattr__(self, name):
         """Delegate all other attributes to the original completions."""
         return getattr(self._original_completions, name)
+
+class BetaCompletionsAsyncWrapper:
+    """Wrapper around OpenAI beta completions that processes toolflow functions."""
+    
+    def __init__(self, client):
+        self._client = client
+        self._original_completions = client.beta.chat.completions
+
+    def parse(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, Iterator[Any]]:
+        # To be implemented
+        pass
+
+    def create(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, Iterator[Any]]:
+        # To be implemented
+        pass
