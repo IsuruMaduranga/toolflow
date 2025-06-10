@@ -39,6 +39,8 @@ def tool(
         
         # Add metadata to the function for direct usage
         func._tool_metadata = get_tool_schema(func, name, description)
+        if func._tool_metadata['function']['name'] == "final_response_internal_tool":
+            raise ValueError("final_response_internal_tool is a reserved tool name and cannot be used as a tool name")
         
         if asyncio.iscoroutinefunction(func):
             @wraps(func)

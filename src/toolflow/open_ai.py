@@ -133,8 +133,38 @@ class CompletionsWrapper:
         max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
         response_format = kwargs.get('response_format', None)
-        stream = kwargs.get('stream', False)
+        stream = kwargs.get('stream', False)       
+        
+        # Handle streaming
+        if stream:
+            if response_format:
+                raise ValueError("response_format is not supported for streaming")
+            
+            return self._create_streaming(
+                model=model,
+                messages=messages,
+                tools=tools,
+                parallel_tool_execution=parallel_tool_execution,
+                max_tool_calls=max_tool_calls,
+                max_workers=max_workers,
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
+            )
 
+        # Handle streaming
+        if stream:
+            if response_format:
+                raise ValueError("response_format is not supported for streaming")
+
+            return self._create_streaming(
+                model=model,
+                messages=messages,
+                tools=tools,
+                parallel_tool_execution=parallel_tool_execution,
+                max_tool_calls=max_tool_calls,
+                max_workers=max_workers,
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
+            )
+        
         # Dynamically add response_format to kwargs if it's a Pydantic model
         if response_format:
             # check if response_format is a Pydantic model
@@ -150,19 +180,6 @@ class CompletionsWrapper:
             else:
                 tools = list(tools)  # Make a copy to avoid modifying the original
             tools.append(response_tool)
-            
-        
-        # Handle streaming
-        if stream:
-            return self._create_streaming(
-                model=model,
-                messages=messages,
-                tools=tools,
-                parallel_tool_execution=parallel_tool_execution,
-                max_tool_calls=max_tool_calls,
-                max_workers=max_workers,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
-            )
         
         response = None
         if tools:
@@ -190,12 +207,20 @@ class CompletionsWrapper:
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
-                if  tool_calls and tool_calls[0].function.name == "response_tool_internal":
+                if  tool_calls and tool_calls[0].function.name == "final_response_internal_tool":
                         # Parse the arguments and extract the actual response data
                         args = json.loads(tool_calls[0].function.arguments)
                         # The response data is nested under the 'response' key
                         response_data = args.get('response', args)
-                        return response_format.model_validate(response_data)
+                        
+                        # Create the parsed Pydantic model
+                        parsed_model = response_format.model_validate(response_data)
+                        
+                        # Modify the response to include both content and parsed
+                        response.choices[0].message.content = json.dumps(response_data)
+                        response.choices[0].message.parsed = parsed_model
+                        
+                        return response
                 elif tool_calls:
                     messages.append(response.choices[0].message)
                     execution_response = self._execute_tools(
@@ -487,10 +512,14 @@ class CompletionsAsyncWrapper:
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
+        response_format = kwargs.get('response_format', None)
         stream = kwargs.get('stream', False)
 
         # Handle streaming
         if stream:
+            if response_format:
+                raise ValueError("response_format is not supported for streaming")
+            
             return self._create_streaming(
                 model=model,
                 messages=messages,
@@ -500,6 +529,22 @@ class CompletionsAsyncWrapper:
                 max_workers=max_workers,
                 **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
             )
+        
+                # Dynamically add response_format to kwargs if it's a Pydantic model
+        if response_format:
+            # check if response_format is a Pydantic model
+            if not (hasattr(response_format, "__annotations__") and hasattr(response_format, "model_validate")):
+                raise ValueError("response_format must be a Pydantic model")
+            
+            # Create a dynamic response tool
+            response_tool = self._create_response_tool(response_format)
+            
+            # Add the response tool to the tools list
+            if tools is None:
+                tools = []
+            else:
+                tools = list(tools)  # Make a copy to avoid modifying the original
+            tools.append(response_tool)
 
         response = None
         if tools:
@@ -523,11 +568,25 @@ class CompletionsAsyncWrapper:
                     model=model,
                     messages=messages,
                     tools=tool_schemas,
-                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
-                if tool_calls:
+                if tool_calls and tool_calls[0].function.name == "final_response_internal_tool":
+                    # Parse the arguments and extract the actual response data
+                    args = json.loads(tool_calls[0].function.arguments)
+                    # The response data is nested under the 'response' key
+                    response_data = args.get('response', args)
+                    
+                    # Create the parsed Pydantic model
+                    parsed_model = response_format.model_validate(response_data)
+                    
+                    # Modify the response to include both content and parsed
+                    response.choices[0].message.content = json.dumps(response_data)
+                    response.choices[0].message.parsed = parsed_model
+                    
+                    return response
+                elif tool_calls:
                     messages.append(response.choices[0].message)
                     execution_response = await self._execute_tools(
                         tool_functions, 
@@ -544,10 +603,23 @@ class CompletionsAsyncWrapper:
             response = await self._original_completions.create(
                 model=model,
                 messages=messages,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls']}
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
             )
         
         return response
+
+    def _create_response_tool(self, response_format):
+        """Create a dynamic response tool for structured output."""
+        @tool
+        def final_response_internal_tool(response: response_format) -> str:
+            f"""
+            You must call this tool to provide your final response.
+            Because user expects the final response in `{response_format.__name__}` format.
+            This tool must be your last tool call.
+            """
+            pass
+
+        return final_response_internal_tool
 
     async def _execute_tools(
         self, 

@@ -1,15 +1,15 @@
-import time
+import asyncio
 import toolflow
-import openai
+from openai import AsyncOpenAI
 import os
 from pydantic import BaseModel
 
 @toolflow.tool
-def fibonacci(n: int) -> int:
+async def fibonacci(n: int) -> int:
     """Calculate the nth Fibonacci number."""
     if n <= 1:
         return n
-    return fibonacci(n-1) + fibonacci(n-2)
+    return await fibonacci(n-1) + await fibonacci(n-2)
 
 class Fib(BaseModel):
     n: int
@@ -18,22 +18,18 @@ class Fib(BaseModel):
 class FibonacciResponse(BaseModel):
     fibonacci_numbers: list[Fib]
 
-@toolflow.tool
-def response_tool(response: FibonacciResponse) -> str:
-    """Call this tool for final response. User expects a response in a specific format."""
-    pass
+async def main():
+    client = toolflow.from_openai_async(AsyncOpenAI())
 
-def main():
-    client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
-
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
         tools=[fibonacci],
         response_format=FibonacciResponse
     )
     
-    print(response)
+    print(response.choices[0].message.parsed)
+    print(response.choices[0].message.content)
     
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
