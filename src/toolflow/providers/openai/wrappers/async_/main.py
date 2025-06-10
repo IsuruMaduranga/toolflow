@@ -76,6 +76,7 @@ class CompletionsAsyncWrapper:
             tools.append(response_tool)
         
         kwargs['tools'] = tools
+        kwargs['handle_structured_response_internal'] = True
         return self.create(model, messages, **kwargs)
     
     async def create(
@@ -126,20 +127,29 @@ class CompletionsAsyncWrapper:
             while True:
                 if max_tool_calls <= 0:
                     raise Exception("Max tool calls reached without finding a solution")
-
-                # Make the API call
-                response = await self._original_completions.create(
-                    model=model,
-                    messages=current_messages,
-                    tools=tool_schemas,
-                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
-                )
-
-                # Handle structured response
-                if response_format:
-                    structured_response = handle_openai_structured_response(response, response_format)
-                    if structured_response:
-                        return structured_response
+                
+                if kwargs.get('handle_structured_response_internal', False):
+                    response = await self._original_completions.create(
+                        model=model,
+                        messages=current_messages,
+                        tools=tool_schemas,
+                        **{k: v for k, v in kwargs.items() if k not in [
+                            'tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format', 'handle_structured_response_internal'
+                        ]}
+                    )
+                    # Handle structured response
+                    if response_format:
+                        structured_response = handle_openai_structured_response(response, response_format)
+                        if structured_response:
+                            return structured_response
+                else:  
+                    # Make the API call
+                    response = await self._original_completions.create(
+                        model=model,
+                        messages=current_messages,
+                        tools=tool_schemas,
+                        **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                    )
 
                 tool_calls = response.choices[0].message.tool_calls
                 if tool_calls:
