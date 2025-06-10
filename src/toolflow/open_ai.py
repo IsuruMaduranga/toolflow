@@ -83,11 +83,22 @@ class OpenAIWrapper:
     def __init__(self, client):
         self._client = client
         self.chat = ChatWrapper(client)
+        self.beta = BetaWrapper(client)
     
     def __getattr__(self, name):
         """Delegate all other attributes to the original client."""
         return getattr(self._client, name)
 
+class BetaWrapper:
+    """Wrapper around OpenAI beta that handles toolflow functions."""
+    
+    def __init__(self, client):
+        self._client = client
+        self.chat = BetaChatWrapper(client)
+
+    def __getattr__(self, name):
+        """Delegate all other attributes to the original client."""
+        return getattr(self._client, name)
 
 class ChatWrapper:
     """Wrapper around OpenAI chat that handles toolflow functions."""
@@ -99,7 +110,15 @@ class ChatWrapper:
     def __getattr__(self, name):
         """Delegate all other attributes to the original chat."""
         return getattr(self._client.chat, name)
+    
 
+class BetaChatWrapper:
+    """Wrapper around OpenAI beta chat that handles toolflow functions."""
+    
+    def __init__(self, client):
+        self._client = client
+        self.completions = CompletionsBetaWrapper(client)
+    
 
 class CompletionsWrapper:
     """Wrapper around OpenAI completions that processes toolflow functions."""
@@ -107,7 +126,46 @@ class CompletionsWrapper:
     def __init__(self, client):
         self._client = client
         self._original_completions = client.chat.completions
-    
+
+    def parse(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, Iterator[Any]]:
+        """
+        Create a chat completion with tool support.
+        
+        Args:
+            tools: List of toolflow decorated functions or OpenAI tool dicts
+            parallel_tool_execution: Whether to execute multiple tool calls in parallel (default: False)
+            max_tool_calls: Maximum number of tool calls to execute
+            max_workers: Maximum number of worker threads to use for parallel execution of sync tools
+            stream: Whether to stream the response (default: False)
+            **kwargs: All other OpenAI chat completion parameters
+        """
+        tools = kwargs.get('tools', None)
+        response_format = kwargs.get('response_format', None)
+        stream = kwargs.get('stream', False)
+
+        if stream:
+            if response_format:
+                raise ValueError("response_format is not supported for streaming")
+            
+        # Dynamically add response_format to kwargs if it's a Pydantic model
+        if response_format:
+            # check if response_format is a Pydantic model
+            if not (hasattr(response_format, "__annotations__") and hasattr(response_format, "model_validate")):
+                raise ValueError("response_format must be a Pydantic model")
+            
+            # Create a dynamic response tool
+            response_tool = self._create_response_tool(response_format)
+            
+            # Add the response tool to the tools list
+            if tools is None:
+                tools = []
+            else:
+                tools = list(tools)  # Make a copy to avoid modifying the original
+            tools.append(response_tool)
+        
+        kwargs['tools'] = tools
+        return self.create(model, messages, **kwargs)
+
     def create(
         self,
         model: str,
@@ -134,12 +192,9 @@ class CompletionsWrapper:
         max_workers = kwargs.get('max_workers', 10)
         response_format = kwargs.get('response_format', None)
         stream = kwargs.get('stream', False)       
-        
+
         # Handle streaming
         if stream:
-            if response_format:
-                raise ValueError("response_format is not supported for streaming")
-            
             return self._create_streaming(
                 model=model,
                 messages=messages,
@@ -149,37 +204,6 @@ class CompletionsWrapper:
                 max_workers=max_workers,
                 **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
             )
-
-        # Handle streaming
-        if stream:
-            if response_format:
-                raise ValueError("response_format is not supported for streaming")
-
-            return self._create_streaming(
-                model=model,
-                messages=messages,
-                tools=tools,
-                parallel_tool_execution=parallel_tool_execution,
-                max_tool_calls=max_tool_calls,
-                max_workers=max_workers,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format']}
-            )
-        
-        # Dynamically add response_format to kwargs if it's a Pydantic model
-        if response_format:
-            # check if response_format is a Pydantic model
-            if not (hasattr(response_format, "__annotations__") and hasattr(response_format, "model_validate")):
-                raise ValueError("response_format must be a Pydantic model")
-            
-            # Create a dynamic response tool
-            response_tool = self._create_response_tool(response_format)
-            
-            # Add the response tool to the tools list
-            if tools is None:
-                tools = []
-            else:
-                tools = list(tools)  # Make a copy to avoid modifying the original
-            tools.append(response_tool)
         
         response = None
         if tools:
@@ -207,7 +231,7 @@ class CompletionsWrapper:
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
-                if  tool_calls and tool_calls[0].function.name == "final_response_internal_tool":
+                if  tool_calls and tool_calls[0].function.name == "final_response_tool_internal":
                         # Parse the arguments and extract the actual response data
                         args = json.loads(tool_calls[0].function.arguments)
                         # The response data is nested under the 'response' key
@@ -243,10 +267,10 @@ class CompletionsWrapper:
         
         return response
 
-    def _create_response_tool(self, response_format):
+    def _create_response_tool(self, response_format) -> Callable:
         """Create a dynamic response tool for structured output."""
-        @tool
-        def response_tool_internal(response: response_format) -> str:
+        @tool(name="final_response_tool_internal", internal=True)
+        def final_response_tool_internal(response: response_format) -> str:
             f"""
             You must call this tool to provide your final response.
             Because user expects the final response in `{response_format.__name__}` format.
@@ -254,7 +278,7 @@ class CompletionsWrapper:
             """
             pass
 
-        return response_tool_internal
+        return final_response_tool_internal
 
     def _execute_tools(
         self, 
@@ -454,20 +478,41 @@ class CompletionsWrapper:
         """Delegate all other attributes to the original completions."""
         return getattr(self._original_completions, name)
 
+class CompletionsBetaWrapper:
+    """Wrapper around OpenAI beta completions that processes toolflow functions."""
+    
+    def __init__(self, client):
+        self._client = client
+        self._original_completions = client.beta.chat.completions
+
+    def parse(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, Iterator[Any]]:
+        # To be implemented
+        pass
+    
+    def create(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, Iterator[Any]]:
+        # To be implemented
+        pass
 
 # Async implementations
-
 class OpenAIAsyncWrapper:
     """Async wrapper around OpenAI client that supports tool-py functions."""
     
     def __init__(self, client):
         self._client = client
         self.chat = ChatAsyncWrapper(client)
-    
+        self.beta = BetaAsyncWrapper(client)
+
     def __getattr__(self, name):
         """Delegate all other attributes to the original client."""
         return getattr(self._client, name)
+    
 
+class BetaAsyncWrapper:
+    """Async wrapper around OpenAI beta that handles toolflow functions."""
+    
+    def __init__(self, client):
+        self._client = client
+        self.chat = ChatAsyncWrapper(client)
 
 class ChatAsyncWrapper:
     """Async wrapper around OpenAI chat that handles toolflow functions."""
@@ -487,6 +532,35 @@ class CompletionsAsyncWrapper:
     def __init__(self, client):
         self._client = client
         self._original_completions = client.chat.completions
+
+
+    def parse(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, Iterator[Any]]:
+        tools = kwargs.get('tools', None)
+        response_format = kwargs.get('response_format', None)
+        stream = kwargs.get('stream', False)
+        
+        if stream:
+            if response_format:
+                raise ValueError("response_format is not supported for streaming")
+            
+        # Dynamically add response_format to kwargs if it's a Pydantic model
+        if response_format:
+            # check if response_format is a Pydantic model
+            if not (hasattr(response_format, "__annotations__") and hasattr(response_format, "model_validate")):
+                raise ValueError("response_format must be a Pydantic model")
+            
+            # Create a dynamic response tool
+            response_tool = self._create_response_tool(response_format)
+            
+            # Add the response tool to the tools list
+            if tools is None:
+                tools = []
+            else:
+                tools = list(tools)  # Make a copy to avoid modifying the original
+            tools.append(response_tool)
+            
+        kwargs['tools'] = tools
+        return self.create(model, messages, **kwargs)
     
     async def create(
         self,
@@ -517,9 +591,6 @@ class CompletionsAsyncWrapper:
 
         # Handle streaming
         if stream:
-            if response_format:
-                raise ValueError("response_format is not supported for streaming")
-            
             return self._create_streaming(
                 model=model,
                 messages=messages,
@@ -529,22 +600,6 @@ class CompletionsAsyncWrapper:
                 max_workers=max_workers,
                 **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
             )
-        
-                # Dynamically add response_format to kwargs if it's a Pydantic model
-        if response_format:
-            # check if response_format is a Pydantic model
-            if not (hasattr(response_format, "__annotations__") and hasattr(response_format, "model_validate")):
-                raise ValueError("response_format must be a Pydantic model")
-            
-            # Create a dynamic response tool
-            response_tool = self._create_response_tool(response_format)
-            
-            # Add the response tool to the tools list
-            if tools is None:
-                tools = []
-            else:
-                tools = list(tools)  # Make a copy to avoid modifying the original
-            tools.append(response_tool)
 
         response = None
         if tools:
@@ -572,7 +627,7 @@ class CompletionsAsyncWrapper:
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
-                if tool_calls and tool_calls[0].function.name == "final_response_internal_tool":
+                if tool_calls and tool_calls[0].function.name == "final_response_tool_internal":
                     # Parse the arguments and extract the actual response data
                     args = json.loads(tool_calls[0].function.arguments)
                     # The response data is nested under the 'response' key
@@ -608,10 +663,10 @@ class CompletionsAsyncWrapper:
         
         return response
 
-    def _create_response_tool(self, response_format):
+    def _create_response_tool(self, response_format) -> Callable:
         """Create a dynamic response tool for structured output."""
-        @tool
-        def final_response_internal_tool(response: response_format) -> str:
+        @tool(name="final_response_tool_internal", internal=True)
+        def final_response_tool_internal(response: response_format) -> str:
             f"""
             You must call this tool to provide your final response.
             Because user expects the final response in `{response_format.__name__}` format.
@@ -619,7 +674,7 @@ class CompletionsAsyncWrapper:
             """
             pass
 
-        return final_response_internal_tool
+        return final_response_tool_internal
 
     async def _execute_tools(
         self, 

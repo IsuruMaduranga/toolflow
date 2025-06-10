@@ -12,7 +12,8 @@ def tool(
     func: Optional[Callable] = None,
     *,
     name: Optional[str] = None,
-    description: Optional[str] = None
+    description: Optional[str] = None,
+    internal: bool = False
 ) -> Union[Callable[[F], F], F]:
     """
     Decorator to mark a function as a tool for LLM calling.
@@ -23,6 +24,7 @@ def tool(
         func: The function being decorated (when used as @tool)
         name: Optional custom name for the tool (defaults to function name)
         description: Optional description (defaults to function docstring)
+        internal: Whether this is an internal tool (defaults to False)
     
     Example:
         @tool
@@ -34,13 +36,14 @@ def tool(
         def add(a: int, b: int) -> int:
             return a + b
     """
+    
     def decorator(func: F) -> F:
         import asyncio
         
         # Add metadata to the function for direct usage
         func._tool_metadata = get_tool_schema(func, name, description)
-        if func._tool_metadata['function']['name'] == "final_response_internal_tool":
-            raise ValueError("final_response_internal_tool is a reserved tool name and cannot be used as a tool name")
+        if not internal and func._tool_metadata['function']['name'] == "final_response_tool_internal":
+            raise ValueError("final_response_tool_internal is an internally used tool by toolflow and cannot be used as a custom tool name")
         
         if asyncio.iscoroutinefunction(func):
             @wraps(func)
@@ -59,9 +62,9 @@ def tool(
             sync_wrapper._tool_metadata = func._tool_metadata
             return sync_wrapper
     
-    # If used as @tool (without parentheses)
+    # If used as @tool (without parentheses) AND no keyword arguments were provided
     if func is not None:
         return decorator(func)
     
-    # If used as @tool(...) (with parentheses)
+    # If used as @tool(...) (with parentheses) OR with keyword arguments
     return decorator

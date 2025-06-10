@@ -18,15 +18,10 @@ class Fib(BaseModel):
 class FibonacciResponse(BaseModel):
     fibonacci_numbers: list[Fib]
 
-@toolflow.tool
-def response_tool(response: FibonacciResponse) -> str:
-    """Call this tool for final response. User expects a response in a specific format."""
-    pass
-
 def main():
     client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
-    response = client.chat.completions.create(
+    response = client.chat.completions.parse(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
         tools=[fibonacci],

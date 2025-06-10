@@ -21,7 +21,7 @@ class FibonacciResponse(BaseModel):
 async def main():
     client = toolflow.from_openai_async(AsyncOpenAI())
 
-    response = await client.chat.completions.create(
+    response = await client.chat.completions.parse(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
         tools=[fibonacci],
