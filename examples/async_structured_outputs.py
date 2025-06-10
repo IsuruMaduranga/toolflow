@@ -30,6 +30,17 @@ async def main():
     
     print(response.choices[0].message.parsed)
     print(response.choices[0].message.content)
+
+    # Beta API
+    response = await client.beta.chat.completions.parse(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
+        tools=[fibonacci],
+        response_format=FibonacciResponse
+    )
+
+    print(response.choices[0].message.parsed)
+    print(response.choices[0].message.content)
     
 if __name__ == "__main__":
     asyncio.run(main())

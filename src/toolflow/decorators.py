@@ -42,6 +42,7 @@ def tool(
         
         # Add metadata to the function for direct usage
         func._tool_metadata = get_tool_schema(func, name, description)
+        func._tool_metadata_strict = get_tool_schema(func, name, description, strict=True)
         if not internal and func._tool_metadata['function']['name'] == "final_response_tool_internal":
             raise ValueError("final_response_tool_internal is an internally used tool by toolflow and cannot be used as a custom tool name")
         
