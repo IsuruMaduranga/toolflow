@@ -9,14 +9,14 @@ import concurrent.futures
 from typing import Any, Dict, List, Callable
 
 
-def validate_and_prepare_openai_tools(tools: List[Callable]) -> tuple[Dict[str, Callable], List[Dict]]:
+def validate_and_prepare_openai_tools(tools: List[Callable], strict: bool = False) -> tuple[Dict[str, Callable], List[Dict]]:
     """Validate tools and prepare OpenAI-specific schemas and function mappings."""
     tool_functions = {}
     tool_schemas = []
     
     for tool in tools:
         if isinstance(tool, Callable) and hasattr(tool, '_tool_metadata'):
-            tool_schemas.append(tool._tool_metadata)
+            tool_schemas.append(tool._tool_metadata_strict if strict else tool._tool_metadata)
             tool_functions[tool._tool_metadata['function']['name']] = tool
         else:
             raise ValueError(f"Only decorated functions via @tool are supported. Got {type(tool)}")
