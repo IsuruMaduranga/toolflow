@@ -256,6 +256,21 @@ mypy toolflow/
 
 ```
 
+## Live Integration Testing
+
+Test your toolflow installation with real OpenAI API calls:
+
+```bash
+# Set your API key
+export OPENAI_API_KEY='your-api-key-here'
+
+# Run interactive test suite
+python run_live_tests.py
+
+# Or run directly with pytest
+python -m pytest tests/test_integration_live.py -v -s
+```
+
 ## Contributing
 
 Contributions are welcome! Please fork the repository, create a feature branch, add tests, and submit a pull request.

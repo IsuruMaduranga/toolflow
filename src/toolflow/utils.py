@@ -30,7 +30,7 @@ def get_tool_schema(
     docstring = parse(inspect.getdoc(func) or "")
     doc_params = {p.arg_name: p for p in docstring.params}
     func_name = name or func.__name__
-    func_description = description or docstring.short_description or inspect.getdoc(func) or ""
+    func_description = description or docstring.short_description or inspect.getdoc(func) or func_name
 
     # 2. Unified Loop: Process EVERY parameter to build fields for a single model
     fields_for_model = {}
@@ -76,13 +76,14 @@ def get_tool_schema(
 
     # 3. Create a single model from all collected fields and generate the schema
     if not fields_for_model:
-        schema = {"type": "object", "properties": {}}
+        schema = {"type": "object", "properties": {}, "required": []}
     else:
         final_model = create_model(f"{func.__name__}Args", **fields_for_model)
         schema = final_model.model_json_schema()
         schema.pop("title", None)
-        if strict:
-            schema["additionalProperties"] = False
+    
+    # Always set additionalProperties to False for OpenAI compatibility
+    schema["additionalProperties"] = False
 
     # 4. Construct the final OpenAI tool schema
     return {

@@ -12,6 +12,11 @@ The test suite has been restructured to be more organized and maintainable. Here
 - **`test_error_handling.py`** - Error handling scenarios, invalid arguments, unknown tools, and edge cases (note: some tests are based on current implementation behavior)
 - **`conftest.py`** - Shared fixtures, common test tools, and utility functions
 
+### Enhanced Test Files (New Functionality)
+- **`test_structured_output.py`** - Comprehensive tests for structured output functionality using the `parse` method
+- **`test_schema_generation_enhanced.py`** - Enhanced schema generation tests for strict vs non-strict modes, internal tools, and complex type handling
+- **`test_integration_comprehensive.py`** - Integration tests showing how different features work together
+
 ## Test Organization Philosophy
 
 1. **Logical Grouping**: Tests are organized by functionality rather than being scattered
@@ -19,6 +24,7 @@ The test suite has been restructured to be more organized and maintainable. Here
 3. **Shared Utilities**: Common fixtures and tools are centralized in `conftest.py`
 4. **Maintainability**: Smaller, focused test files are easier to maintain and understand
 5. **Documentation**: Each test module has clear docstrings explaining its scope
+6. **Comprehensive Coverage**: New functionality is thoroughly tested with integration scenarios
 
 ### Test Categories
 
@@ -60,6 +66,46 @@ Error scenarios and edge cases:
 - Import error simulation
 - Edge case validation
 
+#### Structured Output (`test_structured_output.py`)
+Comprehensive testing of structured output functionality:
+- Parse method for sync and async OpenAI wrappers
+- Beta API wrapper functionality with strict schemas
+- Structured output with tool execution
+- Error handling for missing Pydantic, invalid formats, malformed JSON
+- Integration with Pydantic BaseModel classes
+- Response format tool integration
+
+#### Enhanced Schema Generation (`test_schema_generation_enhanced.py`)
+Advanced schema generation features:
+- Strict vs non-strict schema generation differences
+- Internal tool functionality and name restrictions
+- Enhanced schema properties (required fields, title removal, description fallbacks)
+- Complex type handling in strict mode (Union, List, Optional)
+- Edge cases (async functions, decorator preservation, parameter filtering)
+- Pydantic Field integration with Annotated types
+
+#### Integration Tests (`test_integration_comprehensive.py`)
+Integration testing of how features work together:
+- Structured output with multiple tools
+- Beta API with strict schema validation
+- Enhanced parameter handling and filtering
+- Error handling across feature combinations
+- Schema metadata consistency
+- Feature interoperability testing
+
+## Current Test Statistics
+
+**Total Tests: 140 passed, 3 skipped, 3 warnings**
+
+### Test Breakdown by Functionality:
+- **Core functionality**: ~40 tests
+- **Schema generation**: ~25 tests  
+- **Structured output**: ~18 tests
+- **Enhanced schema features**: ~21 tests
+- **Integration tests**: ~13 tests
+- **Async functionality**: ~15 tests
+- **Error handling**: ~8 tests
+
 ## Usage
 
 ### Running All Tests
@@ -84,6 +130,15 @@ python -m pytest tests/test_schema_generation.py -v
 # Error handling only
 python -m pytest tests/test_error_handling.py -v
 
+# Structured output functionality
+python -m pytest tests/test_structured_output.py -v
+
+# Enhanced schema generation
+python -m pytest tests/test_schema_generation_enhanced.py -v
+
+# Integration tests
+python -m pytest tests/test_integration_comprehensive.py -v
+
 # Legacy tests only
 python -m pytest tests/test_edge_cases.py tests/test_async.py tests/test_parallel.py -v
 ```
@@ -98,6 +153,15 @@ python -m pytest tests/test_async_functionality.py::TestAsyncToolExecution -v
 
 # Test just basic schema generation
 python -m pytest tests/test_schema_generation.py::TestBasicSchemaGeneration -v
+
+# Test structured output functionality
+python -m pytest tests/test_structured_output.py::TestStructuredOutputUtilities -v
+
+# Test schema generation enhancements
+python -m pytest tests/test_schema_generation_enhanced.py::TestStrictSchemaGeneration -v
+
+# Test feature integration
+python -m pytest tests/test_integration_comprehensive.py::TestStructuredOutputIntegration -v
 ```
 
 ## Test Development Guidelines
@@ -124,3 +188,36 @@ Common fixtures are available from `conftest.py`:
 - `async_toolflow_client` - Pre-configured async toolflow client
 - Common test tools: `simple_math_tool`, `divide_tool`, `async_math_tool`, etc.
 - Helper functions: `create_mock_tool_call`, `create_mock_response`
+
+## New Functionality Test Coverage
+
+The enhanced test suite provides comprehensive coverage for all new toolflow features:
+
+### ✅ Structured Output (Parse Method)
+- Parse method functionality for sync/async wrappers
+- Beta API wrapper with strict schemas
+- Response format tool integration
+- Error handling for invalid formats
+- Pydantic model integration
+
+### ✅ Enhanced Schema Generation
+- Strict vs non-strict schema differences
+- Internal tool name protection
+- Required fields always present
+- Description fallback mechanisms
+- Complex type handling improvements
+
+### ✅ Feature Integration
+- Multiple features working together
+- Parameter filtering and validation
+- Schema metadata consistency
+- Error handling across features
+- Beta API integration
+
+### ✅ Enhanced Error Handling
+- Streaming limitations with response formats
+- Beta API error scenarios
+- Complex validation failures
+- Feature interoperability errors
+
+This comprehensive test suite ensures robust coverage of both existing and new functionality, providing confidence in the stability and correctness of the toolflow library.

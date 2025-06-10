@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "toolflow"
-version = "0.1.1"
+version = "0.2.0"
 description = "A Python library for Auto LLM tool calling with decorator-based function registration"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -29,6 +29,7 @@ dependencies = [
     "openai>=1.0.0",
     "pydantic>=2.0.0",
     "typing-extensions>=4.0.0",
+    "docstring-parser>=0.14.0",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,7 @@ dev = [
     "black>=23.0.0",
     "isort>=5.0.0",
     "mypy>=1.0.0",
+    "pytest-asyncio>=0.21.0",
 ]
 
 [project.urls]
