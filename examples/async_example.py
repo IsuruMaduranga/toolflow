@@ -62,34 +62,35 @@ async def main():
     """Main async function demonstrating the async client."""
     
     # Create async OpenAI client (you'll need to set your API key)
+    # Default behavior: simplified API (returns content directly)
     client = toolflow.from_openai_async(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
     
     # Using async client with a sync tool
-    response = await client.chat.completions.create(
+    content = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
         tools=[sync_calculator],
         max_tool_calls=5,
     )
-    print(response.choices[0].message.content)
+    print(content)  # Direct string output
 
     # Using async client with an async tool
-    response = await client.chat.completions.create(
+    content = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "How many users are there in the database?"}],
         tools=[async_database_query],
         max_tool_calls=5,
     )
-    print(response.choices[0].message.content)
+    print(content)  # Direct string output
 
     # Using async client with a sync tool and an async tool
-    response = await client.chat.completions.create(
+    content = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Multiply orders by number of users"}],
         tools=[sync_calculator, async_database_query],
         max_tool_calls=5,
     )
-    print(response.choices[0].message.content)
+    print(content)  # Direct string output
 
 if __name__ == "__main__":
     asyncio.run(main()) 

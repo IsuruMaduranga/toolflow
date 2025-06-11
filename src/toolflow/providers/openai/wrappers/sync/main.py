@@ -22,23 +22,24 @@ from ...structured_output import (
 class OpenAIWrapper:
     """Wrapper around OpenAI client that supports tool-py functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         from .beta import BetaWrapper
         self._client = client
-        self.chat = ChatWrapper(client)
-        self.beta = BetaWrapper(client)
+        self._full_response = full_response
+        self.chat = ChatWrapper(client, full_response)
+        self.beta = BetaWrapper(client, full_response)
     
     def __getattr__(self, name):
         """Delegate all other attributes to the original client."""
         return getattr(self._client, name)
 
-
 class ChatWrapper:
     """Wrapper around OpenAI chat that handles toolflow functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         self._client = client
-        self.completions = CompletionsWrapper(client)
+        self._full_response = full_response
+        self.completions = CompletionsWrapper(client, full_response)
     
     def __getattr__(self, name):
         """Delegate all other attributes to the original chat."""
@@ -48,9 +49,20 @@ class ChatWrapper:
 class CompletionsWrapper:
     """Wrapper around OpenAI completions that processes toolflow functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         self._client = client
         self._original_completions = client.chat.completions
+        self._full_response = full_response
+
+    def _extract_response_content(self, response, full_response: bool, is_structured: bool = False):
+        """Extract content from response based on full_response flag."""
+        if full_response:
+            return response
+        
+        if is_structured:
+            return response.choices[0].message.parsed
+        
+        return response.choices[0].message.content
 
     def parse(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, Iterator[Any]]:
         """Create a completion with structured output parsing."""
@@ -75,8 +87,9 @@ class CompletionsWrapper:
                 tools = list(tools)  # Make a copy to avoid modifying the original
             tools.append(response_tool)
         
-        kwargs['tools'] = tools
-        kwargs['handle_structured_response_internal'] = True
+            kwargs['tools'] = tools
+            kwargs['handle_structured_response_internal'] = True
+        
         return self.create(model, messages, **kwargs)
 
     def create(
@@ -104,7 +117,8 @@ class CompletionsWrapper:
         max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
         response_format = kwargs.get('response_format', None)
-        stream = kwargs.get('stream', False)       
+        stream = kwargs.get('stream', False)
+        full_response = kwargs.get('full_response', self._full_response)
 
         # Handle streaming
         if stream:
@@ -115,7 +129,8 @@ class CompletionsWrapper:
                 parallel_tool_execution=parallel_tool_execution,
                 max_tool_calls=max_tool_calls,
                 max_workers=max_workers,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                full_response=full_response,
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']}
             )
         
         response = None
@@ -128,51 +143,58 @@ class CompletionsWrapper:
                 if max_tool_calls <= 0:
                     raise Exception("Max tool calls reached without finding a solution")
                 
+                # Make the API call
+                excluded_kwargs = ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']
                 if kwargs.get('handle_structured_response_internal', False):
-                    response = self._original_completions.create(
-                        model=model,
-                        messages=current_messages,
-                        tools=tool_schemas,
-                        **{k: v for k, v in kwargs.items() if k not in [
-                            'tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format', 'handle_structured_response_internal'
-                        ]}
-                    )
-                    # Handle structured response
-                    if response_format:
-                        structured_response = handle_openai_structured_response(response, response_format)
-                        if structured_response:
-                            return structured_response
-                else:
-                    # Make the API call
-                    response = self._original_completions.create(
-                        model=model,
-                        messages=current_messages,
-                        tools=tool_schemas,
-                        **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
-                    )
+                    excluded_kwargs.extend(['response_format', 'handle_structured_response_internal'])
+                
+                response = self._original_completions.create(
+                    model=model,
+                    messages=current_messages,
+                    tools=tool_schemas,
+                    **{k: v for k, v in kwargs.items() if k not in excluded_kwargs}
+                )
 
                 tool_calls = response.choices[0].message.tool_calls
                 if tool_calls:
+                    # Handle structured response
+                    if response_format:
+                        num_tool_calls = len(tool_calls)
+                        has_final_response_tool = any(tool_call.function.name == "final_response_tool_internal" for tool_call in tool_calls)
+
+                        if has_final_response_tool and num_tool_calls == 1:
+                            # Handle structured response cases
+                            response = handle_openai_structured_response(response, response_format)
+                            return self._extract_response_content(response, full_response, is_structured=True)
+                        elif not has_final_response_tool:
+                            # We execute rest of the tools
+                            pass
+                        else:
+                            # This is an error case
+                            raise Exception("Model called final_response_tool_internal along with other tools")
+                        
+                    # Execute regular tool calls
                     current_messages.append(response.choices[0].message)
                     execution_response = execute_openai_tools_sync(
-                        tool_functions, 
-                        tool_calls, 
-                        parallel_tool_execution,
+                        tool_functions,
+                        tool_calls,
+                        parallel_tool_execution, 
                         max_workers=max_workers
                     )
                     max_tool_calls -= len(execution_response)
                     current_messages.extend(execution_response)
                 else:
-                    return response
+                    # No tool calls, we're done
+                    return self._extract_response_content(response, full_response)
 
         else: # No tools, just make the API call
             response = self._original_completions.create(
                 model=model,
                 messages=messages,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response', 'is_structured_parse']}
             )
         
-        return response
+        return self._extract_response_content(response, full_response)
 
     def _create_streaming(
         self,
@@ -182,6 +204,7 @@ class CompletionsWrapper:
         parallel_tool_execution: bool = False,
         max_tool_calls: int = 10,
         max_workers: int = 10,
+        full_response: bool = None,
         **kwargs
     ) -> Iterator[Any]:
         """
@@ -191,6 +214,9 @@ class CompletionsWrapper:
         When tool calls are detected in the stream, they are accumulated, executed,
         and then the conversation continues with a new streaming call.
         """
+        if full_response is None:
+            full_response = self._full_response
+            
         def streaming_generator():
             current_messages = messages.copy()
             remaining_tool_calls = max_tool_calls
@@ -226,8 +252,13 @@ class CompletionsWrapper:
                     if chunk.choices and len(chunk.choices) > 0:
                         delta = chunk.choices[0].delta
                         
-                        # Yield the chunk for streaming output
-                        yield chunk
+                        # Yield based on full_response flag
+                        if full_response:
+                            yield chunk
+                        else:
+                            # Only yield content if available
+                            if delta.content:
+                                yield delta.content
                         
                         # Accumulate content
                         if delta.content:
@@ -269,3 +300,37 @@ class CompletionsWrapper:
     def __getattr__(self, name):
         """Delegate all other attributes to the original completions."""
         return getattr(self._original_completions, name)
+
+    def _handle_structured_response_tool_calls(self, response, tool_calls, response_format, full_response):
+        """
+        Handle tool calls when structured response format is specified.
+        
+        Returns:
+            - The structured response if final_response_tool_internal is called alone
+            - None if regular tool execution should continue
+            
+        Raises:
+            Exception: If model calls final_response_tool_internal with other tools
+        """
+        final_response_tool_calls = [
+            tc for tc in tool_calls 
+            if tc.function.name == "final_response_tool_internal"
+        ]
+        
+        if not final_response_tool_calls:
+            # No final response tool, continue with regular tool execution
+            return None
+            
+        if len(final_response_tool_calls) > 1:
+            raise Exception("Model called final_response_tool_internal multiple times")
+            
+        if len(tool_calls) > 1:
+            raise Exception(
+                "Model called final_response_tool_internal along with other tools. "
+                f"Expected only final_response_tool_internal, but got {len(tool_calls)} tools: "
+                f"{[tc.function.name for tc in tool_calls]}"
+            )
+        
+        # Single final_response_tool_internal call - handle structured response
+        response = handle_openai_structured_response(response, response_format)
+        return self._extract_response_content(response, full_response, is_structured=True)

@@ -17,7 +17,8 @@ from .conftest import (
     divide_tool, 
     get_current_time_tool,
     create_mock_tool_call,
-    create_mock_response
+    create_mock_response,
+    create_mock_streaming_chunk
 )
 
 
@@ -161,7 +162,7 @@ class TestOpenAIIntegration:
             max_tool_calls=5,
         )
         
-        assert response.choices[0].message.content is not None
+        assert response is not None
     
     def test_mock_openai_integration(self, sync_toolflow_client, mock_openai_client):
         """Test basic integration with mocked OpenAI client."""
@@ -196,4 +197,193 @@ class TestOpenAIIntegration:
         
         assert response.choices[0].message.content == "The result is 5.0"
         assert mock_openai_client.chat.completions.create.call_count == 2
+
+
+class TestFullResponseParameter:
+    """Test the full_response parameter functionality."""
+    
+    def test_full_response_true(self, mock_openai_client):
+        """Test that full_response=True returns the complete response object."""
+        client = from_openai(mock_openai_client, full_response=True)
+        
+        mock_response = create_mock_response(content="Test content")
+        mock_openai_client.chat.completions.create.return_value = mock_response
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        # Should return the full response object
+        assert hasattr(response, 'choices')
+        assert response.choices[0].message.content == "Test content"
+    
+    def test_full_response_false(self, mock_openai_client):
+        """Test that full_response=False returns only the content."""
+        client = from_openai(mock_openai_client, full_response=False)
+        
+        mock_response = create_mock_response(content="Test content")
+        mock_openai_client.chat.completions.create.return_value = mock_response
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        # Should return only the content string
+        assert response == "Test content"
+        assert isinstance(response, str)
+    
+    def test_method_level_override(self, mock_openai_client):
+        """Test that full_response can be overridden at the method level."""
+        client = from_openai(mock_openai_client, full_response=False)
+        
+        mock_response = create_mock_response(content="Test content")
+        mock_openai_client.chat.completions.create.return_value = mock_response
+        
+        # Override client-level setting
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            full_response=True  # Override the client setting
+        )
+        
+        # Should return the full response object due to override
+        assert hasattr(response, 'choices')
+        assert response.choices[0].message.content == "Test content"
+    
+    def test_parse_method_with_full_response_false(self, mock_openai_client):
+        """Test that parse() method respects full_response=False for simple responses."""
+        client = from_openai(mock_openai_client, full_response=False)
+        
+        # Simple case without tools - should just return content
+        mock_response = create_mock_response(content="Simple response")
+        mock_openai_client.chat.completions.create.return_value = mock_response
+        
+        response = client.chat.completions.parse(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        # Should return only the content string (no tools involved)
+        assert response == "Simple response"
+        assert isinstance(response, str)
+    
+    def test_beta_full_response_parameter(self, mock_openai_client):
+        """Test that full_response parameter works with beta API."""
+        client = from_openai(mock_openai_client, full_response=False)
+        
+        mock_response = create_mock_response(content="Beta test content")
+        mock_openai_client.beta.chat.completions.create.return_value = mock_response
+        
+        response = client.beta.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        # Should return only the content string
+        assert response == "Beta test content"
+        assert isinstance(response, str)
+
+
+class TestStreamingFullResponse:
+    """Test streaming with full_response parameter."""
+    
+    def test_streaming_full_response_false(self, mock_openai_client):
+        """Test that streaming with full_response=False yields content only."""
+        client = from_openai(mock_openai_client, full_response=False)
+        
+        # Mock streaming chunks
+        chunk1 = create_mock_streaming_chunk(content="Hello")
+        chunk2 = create_mock_streaming_chunk(content=" world")
+        chunk3 = create_mock_streaming_chunk(content="!")
+        
+        mock_openai_client.chat.completions.create.return_value = [chunk1, chunk2, chunk3]
+        
+        stream = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=True
+        )
+        
+        content_pieces = list(stream)
+        
+        # Should yield content strings directly
+        assert content_pieces == ["Hello", " world", "!"]
+        for piece in content_pieces:
+            assert isinstance(piece, str)
+    
+    def test_streaming_full_response_true(self, mock_openai_client):
+        """Test that streaming with full_response=True yields full chunks."""
+        client = from_openai(mock_openai_client, full_response=False)
+        
+        # Mock streaming chunks
+        chunk1 = create_mock_streaming_chunk(content="Hello")
+        chunk2 = create_mock_streaming_chunk(content=" world")
+        chunk3 = create_mock_streaming_chunk(content="!")
+        
+        mock_openai_client.chat.completions.create.return_value = [chunk1, chunk2, chunk3]
+        
+        stream = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=True,
+            full_response=True  # Override client setting
+        )
+        
+        chunks = list(stream)
+        
+        # Should yield full chunk objects
+        assert len(chunks) == 3
+        for chunk in chunks:
+            assert hasattr(chunk, 'choices')
+            assert hasattr(chunk.choices[0], 'delta')
+    
+    def test_streaming_client_level_full_response_true(self, mock_openai_client):
+        """Test streaming with client-level full_response=True."""
+        client = from_openai(mock_openai_client, full_response=True)
+        
+        # Mock streaming chunks
+        chunk1 = create_mock_streaming_chunk(content="Hello")
+        chunk2 = create_mock_streaming_chunk(content=" world")
+        
+        mock_openai_client.chat.completions.create.return_value = [chunk1, chunk2]
+        
+        stream = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=True
+        )
+        
+        chunks = list(stream)
+        
+        # Should yield full chunk objects
+        assert len(chunks) == 2
+        for chunk in chunks:
+            assert hasattr(chunk, 'choices')
+            assert hasattr(chunk.choices[0], 'delta')
+    
+    def test_streaming_method_level_override(self, mock_openai_client):
+        """Test that method-level full_response parameter overrides client setting."""
+        client = from_openai(mock_openai_client, full_response=True)
+        
+        # Mock streaming chunks
+        chunk1 = create_mock_streaming_chunk(content="Test")
+        chunk2 = create_mock_streaming_chunk(content=" content")
+        
+        mock_openai_client.chat.completions.create.return_value = [chunk1, chunk2]
+        
+        stream = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=True,
+            full_response=False  # Override client setting
+        )
+        
+        content_pieces = list(stream)
+        
+        # Should yield content strings due to method override
+        assert content_pieces == ["Test", " content"]
+        for piece in content_pieces:
+            assert isinstance(piece, str)
  

@@ -12,12 +12,14 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 
-def from_openai(client) -> "OpenAIWrapper":
+def from_openai(client, full_response: bool = False) -> "OpenAIWrapper":
     """
     Create a toolflow wrapper around an existing OpenAI client.
     
     Args:
         client: An existing OpenAI client instance
+        full_response: If True, return the full OpenAI response object. 
+                      If False (default), return only the content or parsed data.
     
     Returns:
         OpenAIWrapper that supports tool-py decorated functions
@@ -26,30 +28,32 @@ def from_openai(client) -> "OpenAIWrapper":
         import openai
         import toolflow
         
-        client = toolflow.from_openai(openai.OpenAI())
+        # Full response mode (default behavior)
+        client = toolflow.from_openai(openai.OpenAI(), full_response=True)
+        response = client.chat.completions.create(...)
+        content = response.choices[0].message.content
         
-        @toolflow.tool
-        def get_weather(city: str) -> str:
-            return f"Weather in {city}: Sunny"
+        # Simplified response mode (new behavior)
+        client = toolflow.from_openai(openai.OpenAI(), full_response=False)
+        content = client.chat.completions.create(...)  # Returns only content
         
-        response = client.chat.completions.create(
-            model="gpt-4",
-            tools=[get_weather],
-            messages=[{"role": "user", "content": "What's the weather in NYC?"}]
-        )
+        # For structured outputs with simplified mode
+        parsed_data = client.chat.completions.parse(...)  # Returns only parsed data
     """
     if not OPENAI_AVAILABLE:
         raise ImportError("OpenAI library not installed. Install with: pip install openai")
     
-    return OpenAIWrapper(client)
+    return OpenAIWrapper(client, full_response)
 
 
-def from_openai_async(client) -> "OpenAIAsyncWrapper":
+def from_openai_async(client, full_response: bool = False) -> "OpenAIAsyncWrapper":
     """
     Create a toolflow wrapper around an existing OpenAI async client.
     
     Args:
         client: An existing OpenAI async client instance
+        full_response: If True, return the full OpenAI response object.
+                      If False (default), return only the content or parsed data.
     
     Returns:
         OpenAIAsyncWrapper that supports tool-py decorated functions
@@ -58,19 +62,19 @@ def from_openai_async(client) -> "OpenAIAsyncWrapper":
         import openai
         import toolflow
         
-        client = toolflow.from_openai_async(openai.AsyncOpenAI())
+        # Full response mode
+        client = toolflow.from_openai_async(openai.AsyncOpenAI(), full_response=True)
+        response = await client.chat.completions.create(...)
+        content = response.choices[0].message.content
         
-        @toolflow.tool
-        def get_weather(city: str) -> str:
-            return f"Weather in {city}: Sunny"
+        # Simplified response mode (default)
+        client = toolflow.from_openai_async(openai.AsyncOpenAI(), full_response=False)
+        content = await client.chat.completions.create(...)  # Returns only content
         
-        response = await client.chat.completions.create(
-            model="gpt-4",
-            tools=[get_weather],
-            messages=[{"role": "user", "content": "What's the weather in NYC?"}]
-        )
+        # For structured outputs with simplified mode
+        parsed_data = await client.chat.completions.parse(...)  # Returns only parsed data
     """
     if not OPENAI_AVAILABLE:
         raise ImportError("OpenAI library not installed. Install with: pip install openai")
     
-    return OpenAIAsyncWrapper(client)
+    return OpenAIAsyncWrapper(client, full_response)

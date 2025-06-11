@@ -17,7 +17,7 @@ def test_sync_streaming_without_tools():
     ]
     mock_client.chat.completions.create.return_value = iter(mock_stream)
     
-    client = toolflow.from_openai(mock_client)
+    client = toolflow.from_openai(mock_client, full_response=True)
     
     # Test streaming without tools
     stream = client.chat.completions.create(
@@ -78,7 +78,7 @@ def test_sync_streaming_with_tools():
         iter(second_stream)
     ]
     
-    client = toolflow.from_openai(mock_client)
+    client = toolflow.from_openai(mock_client, full_response=True)
     
     # Test streaming with tools
     stream = client.chat.completions.create(
@@ -114,7 +114,7 @@ async def test_async_streaming_without_tools():
     # Use AsyncMock for the create method to properly handle async calls
     mock_client.chat.completions.create = AsyncMock(return_value=async_iter())
     
-    client = toolflow.from_openai_async(mock_client)
+    client = toolflow.from_openai_async(mock_client, full_response=True)
     
     # Test async streaming without tools
     stream = await client.chat.completions.create(
@@ -188,7 +188,7 @@ async def test_async_streaming_with_tools():
         second_async_iter()
     ])
     
-    client = toolflow.from_openai_async(mock_client)
+    client = toolflow.from_openai_async(mock_client, full_response=True)
     
     # Test async streaming with tools
     stream = await client.chat.completions.create(

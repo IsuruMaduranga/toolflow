@@ -79,8 +79,8 @@ async def main():
     )
     
     async for chunk in stream:
-        if chunk.choices[0].delta.content:
-            print(chunk.choices[0].delta.content, end="", flush=True)
+        if chunk:
+            print(chunk, end="", flush=True)
     
     print("\n\n" + "="*60 + "\n")
     
@@ -97,9 +97,8 @@ async def main():
     )
     
     async for chunk in stream:
-        if chunk.choices[0].delta.content:
-            #print(chunk.choices[0].delta.content, end="", flush=True)
-            pass
+        if chunk:
+            print(chunk, end="", flush=True)
     
     print("\n\n" + "="*60 + "\n")
     
@@ -117,8 +116,8 @@ async def main():
     )
     
     async for chunk in stream:
-        if chunk.choices[0].delta.content:
-            print(chunk.choices[0].delta.content, end="", flush=True)
+        if chunk:
+            print(chunk, end="", flush=True)
     
     print("\n")
 

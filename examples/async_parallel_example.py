@@ -62,51 +62,51 @@ async def process_data(data_type: str) -> str:
 
 
 async def main():
-    # Initialize async client
+    # Initialize async client - default behavior: simplified API (returns content directly)
     async_client = toolflow.from_openai_async(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
     print("=== Async Sequential Execution ===")
     start_time = time.time()
-    response = await async_client.chat.completions.create(
+    content = await async_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Calculate 10th, 11th and 12th Fibonacci numbers using async tools."}],
         tools=[calculate_fibonacci_async]
         # parallel_tool_execution=False (default) - sequential execution
     )
     end_time = time.time()
-    print(f"Sequential response: {response.choices[0].message.content}")
+    print(f"Sequential response: {content}")  # Direct string output
     print(f"Sequential execution time: {end_time - start_time:.2f} seconds")
     print()
 
     print("=== Async Parallel Execution ===")
     start_time = time.time()
-    response = await async_client.chat.completions.create(
+    content = await async_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Calculate 10th, 11th and 12th Fibonacci numbers using async tools."}],
         tools=[calculate_fibonacci_async],
         parallel_tool_execution=True  # Enable parallel execution
     ) 
     end_time = time.time()
-    print(f"Parallel response: {response.choices[0].message.content}")
+    print(f"Parallel response: {content}")  # Direct string output
     print(f"Parallel execution time: {end_time - start_time:.2f} seconds")
     print()
 
     print("=== Mixed Async Tools Demo ===")
     start_time = time.time()
-    response = await async_client.chat.completions.create(
+    content = await async_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Fetch data from 'users' and 'products' APIs, and process 'analytics' data."}],
         tools=[fetch_api_data, process_data],
         parallel_tool_execution=True  # Enable parallel execution
     )
     end_time = time.time()
-    print(f"Mixed async tools response: {response.choices[0].message.content}")
+    print(f"Mixed async tools response: {content}")  # Direct string output
     print(f"Mixed parallel execution time: {end_time - start_time:.2f} seconds")
     print()
 
     print("=== Async Parallel Execution with Sync and Async Tools ===")
     start_time = time.time()
-    response = await async_client.chat.completions.create(
+    content = await async_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Calculate 10th, 11th, 12th and 13th Fibonacci numbers and fetch data from 'users' and 'products' APIs."}],
         tools=[calculate_fibonacci, fetch_api_data],
@@ -114,7 +114,7 @@ async def main():
         parallel_tool_execution=True
     )
     end_time = time.time()
-    print(f"Mixed async tools response: {response.choices[0].message.content}")
+    print(f"Mixed async tools response: {content}")  # Direct string output
     print(f"Mixed parallel execution time: {end_time - start_time:.2f} seconds")
     print()
    

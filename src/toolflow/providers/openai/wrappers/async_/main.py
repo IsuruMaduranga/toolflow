@@ -22,11 +22,12 @@ from ...structured_output import (
 class OpenAIAsyncWrapper:
     """Async wrapper around OpenAI client that supports tool-py functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         from .beta import BetaAsyncWrapper
         self._client = client
-        self.chat = ChatAsyncWrapper(client)
-        self.beta = BetaAsyncWrapper(client)
+        self._full_response = full_response
+        self.chat = ChatAsyncWrapper(client, full_response)
+        self.beta = BetaAsyncWrapper(client, full_response)
 
     def __getattr__(self, name):
         """Delegate all other attributes to the original client."""
@@ -36,9 +37,10 @@ class OpenAIAsyncWrapper:
 class ChatAsyncWrapper:
     """Async wrapper around OpenAI chat that handles toolflow functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         self._client = client
-        self.completions = CompletionsAsyncWrapper(client)
+        self._full_response = full_response
+        self.completions = CompletionsAsyncWrapper(client, full_response)
     
     def __getattr__(self, name):
         """Delegate all other attributes to the original chat."""
@@ -48,9 +50,20 @@ class ChatAsyncWrapper:
 class CompletionsAsyncWrapper:
     """Async wrapper around OpenAI completions that processes toolflow functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         self._client = client
         self._original_completions = client.chat.completions
+        self._full_response = full_response
+
+    def _extract_response_content(self, response, full_response: bool, is_structured: bool = False):
+        """Extract content from response based on full_response flag."""
+        if full_response:
+            return response
+        
+        if is_structured:
+            return response.choices[0].message.parsed
+        
+        return response.choices[0].message.content
 
     def parse(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, AsyncIterator[Any]]:
         """Create a completion with structured output parsing."""
@@ -75,8 +88,8 @@ class CompletionsAsyncWrapper:
                 tools = list(tools)  # Make a copy to avoid modifying the original
             tools.append(response_tool)
         
-        kwargs['tools'] = tools
-        kwargs['handle_structured_response_internal'] = True
+            kwargs['tools'] = tools
+            kwargs['handle_structured_response_internal'] = True
         return self.create(model, messages, **kwargs)
     
     async def create(
@@ -105,6 +118,7 @@ class CompletionsAsyncWrapper:
         max_workers = kwargs.get('max_workers', 10)
         response_format = kwargs.get('response_format', None)
         stream = kwargs.get('stream', False)
+        full_response = kwargs.get('full_response', self._full_response)
 
         # Handle streaming
         if stream:
@@ -115,7 +129,8 @@ class CompletionsAsyncWrapper:
                 parallel_tool_execution=parallel_tool_execution,
                 max_tool_calls=max_tool_calls,
                 max_workers=max_workers,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                full_response=full_response,
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']}
             )
 
         response = None
@@ -128,31 +143,36 @@ class CompletionsAsyncWrapper:
                 if max_tool_calls <= 0:
                     raise Exception("Max tool calls reached without finding a solution")
                 
+                # Make the API call
+                excluded_kwargs = ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']
                 if kwargs.get('handle_structured_response_internal', False):
-                    response = await self._original_completions.create(
-                        model=model,
-                        messages=current_messages,
-                        tools=tool_schemas,
-                        **{k: v for k, v in kwargs.items() if k not in [
-                            'tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'response_format', 'handle_structured_response_internal'
-                        ]}
-                    )
-                    # Handle structured response
-                    if response_format:
-                        structured_response = handle_openai_structured_response(response, response_format)
-                        if structured_response:
-                            return structured_response
-                else:  
-                    # Make the API call
-                    response = await self._original_completions.create(
-                        model=model,
-                        messages=current_messages,
-                        tools=tool_schemas,
-                        **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
-                    )
+                    excluded_kwargs.extend(['response_format', 'handle_structured_response_internal'])
+
+                response = await self._original_completions.create(
+                    model=model,
+                    messages=current_messages,
+                    tools=tool_schemas,
+                    **{k: v for k, v in kwargs.items() if k not in excluded_kwargs}
+                )
 
                 tool_calls = response.choices[0].message.tool_calls
                 if tool_calls:
+                    # Handle structured response
+                    if response_format:
+                        num_tool_calls = len(tool_calls)
+                        has_final_response_tool = any(tool_call.function.name == "final_response_tool_internal" for tool_call in tool_calls)
+
+                        if has_final_response_tool and num_tool_calls == 1:
+                            response = handle_openai_structured_response(response, response_format)
+                            return self._extract_response_content(response, full_response, is_structured=True)
+                        elif not has_final_response_tool:
+                            # We execute rest of the tools
+                            pass
+                        else:
+                            # This is an error case
+                            raise Exception("Model called final_response_tool_internal along with other tools")
+                    
+                    # Else we execute the tool calls
                     current_messages.append(response.choices[0].message)
                     execution_response = await execute_openai_tools_async(
                         tool_functions, 
@@ -163,16 +183,17 @@ class CompletionsAsyncWrapper:
                     max_tool_calls -= len(execution_response)
                     current_messages.extend(execution_response)
                 else:
-                    return response
+                    # No tool calls, we're done
+                    return self._extract_response_content(response, full_response)
 
         else: # No tools, just make the API call
             response = await self._original_completions.create(
                 model=model,
                 messages=messages,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response', 'is_structured_parse']}
             )
         
-        return response
+        return self._extract_response_content(response, full_response)
 
     async def _create_streaming(
         self,
@@ -182,6 +203,7 @@ class CompletionsAsyncWrapper:
         parallel_tool_execution: bool = False,
         max_tool_calls: int = 10,
         max_workers: int = 10,
+        full_response: bool = None,
         **kwargs
     ) -> AsyncIterator[Any]:
         """
@@ -191,6 +213,9 @@ class CompletionsAsyncWrapper:
         When tool calls are detected in the stream, they are accumulated, executed,
         and then the conversation continues with a new streaming call.
         """
+        if full_response is None:
+            full_response = self._full_response
+            
         current_messages = messages.copy()
         remaining_tool_calls = max_tool_calls
         
@@ -225,8 +250,13 @@ class CompletionsAsyncWrapper:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
                     
-                    # Yield the chunk for streaming output
-                    yield chunk
+                    # Yield based on full_response flag
+                    if full_response:
+                        yield chunk
+                    else:
+                        # Only yield content if available
+                        if delta.content:
+                            yield delta.content
                     
                     # Accumulate content
                     if delta.content:

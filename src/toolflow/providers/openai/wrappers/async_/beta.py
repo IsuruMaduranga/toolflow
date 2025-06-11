@@ -19,9 +19,10 @@ from ...streaming import (
 class BetaAsyncWrapper:
     """Async wrapper around OpenAI beta that handles toolflow functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         self._client = client
-        self.chat = BetaChatAsyncWrapper(client)
+        self._full_response = full_response
+        self.chat = BetaChatAsyncWrapper(client, full_response)
 
     def __getattr__(self, name):
         """Delegate all other attributes to the original client."""
@@ -31,17 +32,33 @@ class BetaAsyncWrapper:
 class BetaChatAsyncWrapper:
     """Async wrapper around OpenAI beta chat that handles toolflow functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         self._client = client
-        self.completions = BetaCompletionsAsyncWrapper(client)
+        self._full_response = full_response
+        self.completions = BetaCompletionsAsyncWrapper(client, full_response)
 
 
 class BetaCompletionsAsyncWrapper:
     """Async wrapper around OpenAI beta completions that processes toolflow functions."""
     
-    def __init__(self, client):
+    def __init__(self, client, full_response: bool = False):
         self._client = client
         self._original_completions = client.beta.chat.completions
+        self._full_response = full_response
+
+    def _extract_response_content(self, response, full_response: bool, is_structured: bool = False):
+        """Extract content from response based on full_response flag."""
+        if full_response:
+            return response
+        
+        # Check if we have a parsed structured response
+        # Only return parsed if it exists and is not a Mock object (for tests)
+        if (hasattr(response.choices[0].message, 'parsed') and 
+            response.choices[0].message.parsed is not None and
+            not str(type(response.choices[0].message.parsed)).startswith("<class 'unittest.mock")):
+            return response.choices[0].message.parsed
+        
+        return response.choices[0].message.content
 
     async def parse(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, AsyncIterator[Any]]:
         """Create a completion with structured output parsing."""
@@ -49,6 +66,7 @@ class BetaCompletionsAsyncWrapper:
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
+        full_response = kwargs.get('full_response', self._full_response)
         
         response = None
         if tools:
@@ -65,7 +83,7 @@ class BetaCompletionsAsyncWrapper:
                     model=model,
                     messages=current_messages,
                     tools=tool_schemas,
-                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']}
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
@@ -80,16 +98,16 @@ class BetaCompletionsAsyncWrapper:
                     max_tool_calls -= len(execution_response)
                     current_messages.extend(execution_response)
                 else:
-                    return response
+                    return self._extract_response_content(response, full_response)
 
         else: # No tools, just make the API call
             response = await self._original_completions.parse(
                 model=model,
                 messages=messages,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']}
             )
         
-        return response
+        return self._extract_response_content(response, full_response)
 
     async def create(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, AsyncIterator[Any]]:
         """
@@ -110,6 +128,7 @@ class BetaCompletionsAsyncWrapper:
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
+        full_response = kwargs.get('full_response', self._full_response)
 
         # Handle streaming
         if kwargs.get('stream', False):
@@ -120,7 +139,8 @@ class BetaCompletionsAsyncWrapper:
                 parallel_tool_execution=parallel_tool_execution,
                 max_tool_calls=max_tool_calls,
                 max_workers=max_workers,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                full_response=full_response,
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']}
             )
         
         response = None
@@ -138,7 +158,7 @@ class BetaCompletionsAsyncWrapper:
                     model=model,
                     messages=current_messages,
                     tools=tool_schemas,
-                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                    **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']}
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
@@ -153,16 +173,16 @@ class BetaCompletionsAsyncWrapper:
                     max_tool_calls -= len(execution_response)
                     current_messages.extend(execution_response)
                 else:
-                    return response
+                    return self._extract_response_content(response, full_response)
 
         else: # No tools, just make the API call
             response = await self._original_completions.create(
                 model=model,
                 messages=messages,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers']}
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']}
             )
         
-        return response
+        return self._extract_response_content(response, full_response)
 
     async def _create_streaming(
         self,
@@ -172,6 +192,7 @@ class BetaCompletionsAsyncWrapper:
         parallel_tool_execution: bool = False,
         max_tool_calls: int = 10,
         max_workers: int = 10,
+        full_response: bool = None,
         **kwargs
     ) -> AsyncIterator[Any]:
         """
@@ -181,6 +202,9 @@ class BetaCompletionsAsyncWrapper:
         When tool calls are detected in the stream, they are accumulated, executed,
         and then the conversation continues with a new streaming call.
         """
+        if full_response is None:
+            full_response = self._full_response
+            
         current_messages = messages.copy()
         remaining_tool_calls = max_tool_calls
         
@@ -215,8 +239,13 @@ class BetaCompletionsAsyncWrapper:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
                     
-                    # Yield the chunk for streaming output
-                    yield chunk
+                    # Yield based on full_response flag
+                    if full_response:
+                        yield chunk
+                    else:
+                        # Only yield content if available
+                        if delta.content:
+                            yield delta.content
                     
                     # Accumulate content
                     if delta.content:

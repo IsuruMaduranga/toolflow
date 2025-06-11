@@ -28,18 +28,19 @@ def fibonacci(n: int) -> int:
 
 
 def main():
+    # Default behavior: simplified API (returns content directly)
     client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
     # Sequential execution
     print("Sequential execution:")
     start_time = time.time()
-    response = client.chat.completions.create(
+    content = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
         tools=[calculate_fibonacci]
     )
     end_time = time.time()
-    print(response.choices[0].message.content)
+    print(content)  # Direct string output
     print(f"Time taken: {end_time - start_time} seconds")
 
     print()
@@ -47,14 +48,14 @@ def main():
     # Parallel execution
     print("Parallel execution:")
     start_time = time.time()
-    response = client.chat.completions.create(
+    content = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
         tools=[calculate_fibonacci],
         parallel_tool_execution=True
     ) 
     end_time = time.time()
-    print(response.choices[0].message.content)
+    print(content)  # Direct string output
     print(f"Time taken: {end_time - start_time} seconds")
 
 

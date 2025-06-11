@@ -24,27 +24,32 @@ class WeatherReport(BaseModel):
     weather: str
     temperature: float
 
-# 4. Call the API, passing the function directly
-response = client.chat.completions.create(
+# 4. Call the API, passing the function directly (default: simplified response)
+content = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What's the weather in NYC?"}],
     tools=[get_weather],
 )
+print(content)  # Direct string output: "Weather in NYC: Sunny, 72°F"
 
-# 5. If you want structured outputs, pass a Pydantic model to the API
-response_structured = client.chat.completions.parse(
+# 5. For structured outputs, pass a Pydantic model to the API
+parsed_data = client.chat.completions.parse(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What's the weather in NYC?"}],
     tools=[get_weather],
     response_format=WeatherReport # Pydantic model for structured output
 )
+print(parsed_data)  # Direct WeatherReport object
 
-# 6. Read the outputs
-print(response.choices[0].message.content)
-print(response_structured.choices[0].message.parsed)
-
-# Toolflow handles the schema generation, execution, and response automatically
-# Output: Weather in NYC: Sunny, 72°F
+# 6. If you need the full OpenAI response object, use full_response=True (default: False)
+full_client = toolflow.from_openai(OpenAI(), full_response=True)
+response = full_client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What's the weather in NYC?"}],
+    tools=[get_weather],
+    # full_response=True -> Or pass here to get the full response object
+)
+print(response.choices[0].message.content)  # Traditional OpenAI response access
 ```
 
 ## Key Features
@@ -88,7 +93,7 @@ def add_numbers(a: int, b: int) -> int:
     """Add two numbers and return the result."""
     return a + b
 
-response = client.chat.completions.create(
+content = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[
         {"role": "user", "content": "What's the weather in SF? Also, what's 15 + 27?"}
@@ -97,7 +102,7 @@ response = client.chat.completions.create(
     parallel_tool_execution=True, # Tools will run in parallel
 )
 
-print(response.choices[0].message.content)
+print(content)  # Direct string output
 ```
 
 ### Streaming with Tools
@@ -105,11 +110,24 @@ print(response.choices[0].message.content)
 Simply add `stream=True` as you would with OpenAI. Toolflow detects tool calls from the stream, executes them, and continues the conversation seamlessly.
 
 ```python
+# Default behavior (simplified API) - yields content directly
 stream = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
     tools=[get_weather],
     stream=True
+)
+
+for content in stream:
+    print(content, end="")  # Direct content strings
+
+# Traditional behavior - yields full chunk objects
+stream = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
+    tools=[get_weather],
+    stream=True,
+    full_response=True
 )
 
 for chunk in stream:
@@ -139,12 +157,12 @@ async def async_db_query(query: str) -> str:
     return f"Result for: {query}"
 
 async def main():
-    response = await async_client.chat.completions.create(
+    content = await async_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Add 15 + 27 and query the users table."}],
         tools=[sync_calculator, async_db_query] # Mix and match!
     )
-    print(response.choices[0].message.content)
+    print(content)  # Direct string output
 
 asyncio.run(main())
 ```
@@ -172,22 +190,28 @@ class FibonacciResponse(BaseModel):
 
 client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
-# Toolflow enhanced API
-response = client.chat.completions.parse(
+# Toolflow enhanced API (returns parsed data directly)
+parsed_data = client.chat.completions.parse(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
     tools=[fibonacci], # Toolcalling works seamlessly
     response_format=FibonacciResponse # Pydantic model for structured output
 )
 
-# OpenAI Beta API
-response = client.beta.chat.completions.parse(
+# OpenAI Beta API (returns parsed data directly)
+beta_parsed_data = client.beta.chat.completions.parse(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
     tools=[fibonacci],
     response_format=FibonacciResponse
 )
 
+print(parsed_data)  # Direct FibonacciResponse object
+print(beta_parsed_data)  # Direct FibonacciResponse object
+
+# For full response access, use full_response=True
+full_client = toolflow.from_openai(openai.OpenAI(), full_response=True)
+response = full_client.chat.completions.parse(...)
 print(response.choices[0].message.parsed)
 print(response.choices[0].message.content)
 ```
@@ -206,8 +230,29 @@ def my_function(param: str) -> str:
 - `description` (optional): A custom description. Defaults to the function's docstring.
 
 ### Client Wrappers
-- `toolflow.from_openai(client)`: Wraps a synchronous openai.OpenAI client.
-- `toolflow.from_openai_async(client)`: Wraps an asynchronous openai.AsyncOpenAI client.
+- `toolflow.from_openai(client, full_response=False)`: Wraps a synchronous openai.OpenAI client.
+- `toolflow.from_openai_async(client, full_response=False)`: Wraps an asynchronous openai.AsyncOpenAI client.
+
+#### `full_response` Parameter
+By default, toolflow returns only the content or parsed data from responses for a simplified API. You can control this behavior:
+
+- `full_response=False` (default): Returns `response.choices[0].message.content` for regular calls, or `response.choices[0].message.parsed` for structured outputs
+- `full_response=True`: Returns the complete OpenAI response object
+
+```python
+# Default behavior (simplified API) - returns only content
+client = toolflow.from_openai(OpenAI())  # full_response=False by default
+content = client.chat.completions.create(...)  # Returns string directly
+
+# Full response mode (traditional OpenAI API)
+client = toolflow.from_openai(OpenAI(), full_response=True) 
+response = client.chat.completions.create(...)  # Returns full response object
+content = response.choices[0].message.content
+
+# Override at method level
+client = toolflow.from_openai(OpenAI())  # Default: simplified API
+content = client.chat.completions.create(..., full_response=True)  # Override to get full response
+```
 
 ### Enhanced chat.completions.create()
 
@@ -225,6 +270,7 @@ client.chat.completions.create(
     parallel_tool_execution: bool = False,
     max_tool_calls: int = 10,
     max_workers: int = 10,
+    full_response: bool = False,
 )
 ```
 - `tools`: A list of functions decorated with @toolflow.tool.

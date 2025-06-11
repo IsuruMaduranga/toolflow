@@ -28,7 +28,8 @@ def execute_openai_tools_sync(
     tool_functions: Dict[str, Callable],
     tool_calls: List[Any],
     parallel_tool_execution: bool = False,
-    max_workers: int = 10
+    max_workers: int = 10,
+    graceful_error_handling: bool = False
 ) -> List[Dict[str, Any]]:
     """Execute OpenAI tool calls synchronously."""
     
@@ -51,8 +52,15 @@ def execute_openai_tools_sync(
                 "content": json.dumps(result) if not isinstance(result, str) else result
             }
         except Exception as e:
-            raise Exception(f"Error executing tool {tool_name}: {e}")
-    
+            if graceful_error_handling:
+                return {
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "content": f"Error executing tool {tool_name}: {e}"
+                }
+            else:
+                raise Exception(f"Error executing tool {tool_name}: {e}")
+  
     # Sequential execution
     if not parallel_tool_execution or len(tool_calls) == 1:
         return [execute_single_tool(tool_call) for tool_call in tool_calls]
@@ -85,7 +93,8 @@ async def execute_openai_tools_async(
     tool_functions: Dict[str, Callable],
     tool_calls: List[Any],
     parallel_tool_execution: bool = False,
-    max_workers: int = 10
+    max_workers: int = 10,
+    graceful_error_handling: bool = False
 ) -> List[Dict[str, Any]]:
     """Execute OpenAI tool calls asynchronously, separating sync and async tools."""
     
@@ -116,7 +125,14 @@ async def execute_openai_tools_async(
                 "content": json.dumps(result) if not isinstance(result, str) else result
             }
         except Exception as e:
-            raise Exception(f"Error executing tool {tool_name}: {e}")
+            if graceful_error_handling:
+                return {
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "content": f"Error executing tool {tool_name}: {e}"
+                }
+            else:
+                raise Exception(f"Error executing tool {tool_name}: {e}")
     
     # Sequential execution
     if not parallel_tool_execution or len(tool_calls) == 1:

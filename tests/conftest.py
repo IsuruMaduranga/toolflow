@@ -77,13 +77,17 @@ def mock_async_openai_client():
 @pytest.fixture
 def sync_toolflow_client(mock_openai_client):
     """Create a sync toolflow client with mocked OpenAI client."""
-    return from_openai(mock_openai_client)
+    # Use full_response=True for backward compatibility with existing tests
+    # The default behavior (full_response=False) is tested in specific test classes
+    return from_openai(mock_openai_client, full_response=True)
 
 
 @pytest.fixture
 def async_toolflow_client(mock_async_openai_client):
     """Create an async toolflow client with mocked OpenAI client."""
-    return from_openai_async(mock_async_openai_client)
+    # Use full_response=True for backward compatibility with existing tests
+    # The default behavior (full_response=False) is tested in specific test classes
+    return from_openai_async(mock_async_openai_client, full_response=True)
 
 
 def create_mock_tool_call(call_id: str, function_name: str, arguments: dict):
@@ -103,3 +107,13 @@ def create_mock_response(tool_calls=None, content=None):
     response.choices[0].message.tool_calls = tool_calls
     response.choices[0].message.content = content
     return response
+
+
+def create_mock_streaming_chunk(content=None, tool_calls=None):
+    """Helper to create a mock streaming chunk."""
+    chunk = Mock()
+    chunk.choices = [Mock()]
+    chunk.choices[0].delta = Mock()
+    chunk.choices[0].delta.content = content
+    chunk.choices[0].delta.tool_calls = tool_calls
+    return chunk

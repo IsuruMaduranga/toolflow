@@ -18,7 +18,8 @@ from .conftest import (
     slow_async_tool,
     failing_tool,
     create_mock_tool_call,
-    create_mock_response
+    create_mock_response,
+    create_mock_streaming_chunk
 )
 
 
@@ -279,7 +280,7 @@ class TestAsyncRealIntegration:
             max_tool_calls=5
         )
         
-        assert response.choices[0].message.content is not None
+        assert response is not None
     
     @pytest.mark.asyncio
     async def test_real_openai_async_with_async_tool(self):
@@ -295,4 +296,222 @@ class TestAsyncRealIntegration:
             max_tool_calls=5
         )
         
-        assert response.choices[0].message.content is not None
+        assert response is not None
+
+
+class TestAsyncFullResponseParameter:
+    """Test the full_response parameter functionality in async context."""
+    
+    @pytest.mark.asyncio
+    async def test_async_full_response_true(self, mock_async_openai_client):
+        """Test that full_response=True returns the complete response object in async context."""
+        from toolflow import from_openai_async
+        client = from_openai_async(mock_async_openai_client, full_response=True)
+        
+        mock_response = create_mock_response(content="Async test content")
+        mock_async_openai_client.chat.completions.create.return_value = mock_response
+        
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        # Should return the full response object
+        assert hasattr(response, 'choices')
+        assert response.choices[0].message.content == "Async test content"
+    
+    @pytest.mark.asyncio
+    async def test_async_full_response_false(self, mock_async_openai_client):
+        """Test that full_response=False returns only the content in async context."""
+        from toolflow import from_openai_async
+        client = from_openai_async(mock_async_openai_client, full_response=False)
+        
+        mock_response = create_mock_response(content="Async test content")
+        mock_async_openai_client.chat.completions.create.return_value = mock_response
+        
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        # Should return only the content string
+        assert response == "Async test content"
+        assert isinstance(response, str)
+    
+    @pytest.mark.asyncio
+    async def test_async_method_level_override(self, mock_async_openai_client):
+        """Test that full_response can be overridden at the method level in async context."""
+        from toolflow import from_openai_async
+        client = from_openai_async(mock_async_openai_client, full_response=False)
+        
+        mock_response = create_mock_response(content="Async test content")
+        mock_async_openai_client.chat.completions.create.return_value = mock_response
+        
+        # Override client-level setting
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            full_response=True  # Override the client setting
+        )
+        
+        # Should return the full response object due to override
+        assert hasattr(response, 'choices')
+        assert response.choices[0].message.content == "Async test content"
+    
+    @pytest.mark.asyncio
+    async def test_async_beta_full_response_parameter(self, mock_async_openai_client):
+        """Test that full_response parameter works with beta API in async context."""
+        from toolflow import from_openai_async
+        
+        # Set up beta mock properly for async
+        mock_async_openai_client.beta = Mock()
+        mock_async_openai_client.beta.chat = Mock()
+        mock_async_openai_client.beta.chat.completions = AsyncMock()
+        
+        client = from_openai_async(mock_async_openai_client, full_response=False)
+        
+        mock_response = create_mock_response(content="Async beta test content")
+        mock_async_openai_client.beta.chat.completions.create.return_value = mock_response
+        
+        response = await client.beta.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        # Should return only the content string
+        assert response == "Async beta test content"
+        assert isinstance(response, str)
+
+
+class TestAsyncStreamingFullResponse:
+    """Test async streaming with full_response parameter."""
+    
+    @pytest.mark.asyncio
+    async def test_async_streaming_full_response_false(self, mock_async_openai_client):
+        """Test that async streaming with full_response=False yields content only."""
+        from toolflow import from_openai_async
+        client = from_openai_async(mock_async_openai_client, full_response=False)
+        
+        # Mock streaming chunks
+        chunk1 = create_mock_streaming_chunk(content="Hello")
+        chunk2 = create_mock_streaming_chunk(content=" async")
+        chunk3 = create_mock_streaming_chunk(content=" world")
+        
+        async def mock_async_stream():
+            for chunk in [chunk1, chunk2, chunk3]:
+                yield chunk
+        
+        mock_async_openai_client.chat.completions.create.return_value = mock_async_stream()
+        
+        stream = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=True
+        )
+        
+        content_pieces = []
+        async for content in stream:
+            content_pieces.append(content)
+        
+        # Should yield content strings directly
+        assert content_pieces == ["Hello", " async", " world"]
+        for piece in content_pieces:
+            assert isinstance(piece, str)
+    
+    @pytest.mark.asyncio
+    async def test_async_streaming_full_response_true(self, mock_async_openai_client):
+        """Test that async streaming with full_response=True yields full chunks."""
+        from toolflow import from_openai_async
+        client = from_openai_async(mock_async_openai_client, full_response=False)
+        
+        # Mock streaming chunks
+        chunk1 = create_mock_streaming_chunk(content="Hello")
+        chunk2 = create_mock_streaming_chunk(content=" async")
+        chunk3 = create_mock_streaming_chunk(content=" chunks")
+        
+        async def mock_async_stream():
+            for chunk in [chunk1, chunk2, chunk3]:
+                yield chunk
+        
+        mock_async_openai_client.chat.completions.create.return_value = mock_async_stream()
+        
+        stream = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=True,
+            full_response=True  # Override client setting
+        )
+        
+        chunks = []
+        async for chunk in stream:
+            chunks.append(chunk)
+        
+        # Should yield full chunk objects
+        assert len(chunks) == 3
+        for chunk in chunks:
+            assert hasattr(chunk, 'choices')
+            assert hasattr(chunk.choices[0], 'delta')
+    
+    @pytest.mark.asyncio
+    async def test_async_streaming_client_level_full_response_true(self, mock_async_openai_client):
+        """Test async streaming with client-level full_response=True."""
+        from toolflow import from_openai_async
+        client = from_openai_async(mock_async_openai_client, full_response=True)
+        
+        # Mock streaming chunks
+        chunk1 = create_mock_streaming_chunk(content="Hello")
+        chunk2 = create_mock_streaming_chunk(content=" client")
+        
+        async def mock_async_stream():
+            for chunk in [chunk1, chunk2]:
+                yield chunk
+        
+        mock_async_openai_client.chat.completions.create.return_value = mock_async_stream()
+        
+        stream = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=True
+        )
+        
+        chunks = []
+        async for chunk in stream:
+            chunks.append(chunk)
+        
+        # Should yield full chunk objects
+        assert len(chunks) == 2
+        for chunk in chunks:
+            assert hasattr(chunk, 'choices')
+            assert hasattr(chunk.choices[0], 'delta')
+    
+    @pytest.mark.asyncio
+    async def test_async_streaming_method_level_override(self, mock_async_openai_client):
+        """Test that method-level full_response parameter overrides client setting in async."""
+        from toolflow import from_openai_async
+        client = from_openai_async(mock_async_openai_client, full_response=True)
+        
+        # Mock streaming chunks
+        chunk1 = create_mock_streaming_chunk(content="Test")
+        chunk2 = create_mock_streaming_chunk(content=" override")
+        
+        async def mock_async_stream():
+            for chunk in [chunk1, chunk2]:
+                yield chunk
+        
+        mock_async_openai_client.chat.completions.create.return_value = mock_async_stream()
+        
+        stream = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=True,
+            full_response=False  # Override client setting
+        )
+        
+        content_pieces = []
+        async for content in stream:
+            content_pieces.append(content)
+        
+        # Should yield content strings due to method override
+        assert content_pieces == ["Test", " override"]
+        for piece in content_pieces:
+            assert isinstance(piece, str)

@@ -149,8 +149,8 @@ class TestBasicToolCalling:
             max_tool_calls=3
         )
         
-        assert response.choices[0].message.content is not None
-        assert "42" in response.choices[0].message.content
+        assert response is not None
+        assert "42" in response
 
     def test_multiple_tool_calls(self, client):
         """Test calling multiple tools in sequence."""
@@ -161,8 +161,8 @@ class TestBasicToolCalling:
             max_tool_calls=5
         )
         
-        assert response.choices[0].message.content is not None
-        assert "45" in response.choices[0].message.content
+        assert response is not None
+        assert "45" in response
 
     def test_parallel_tool_execution(self, client):
         """Test parallel tool execution performance."""
@@ -179,9 +179,9 @@ class TestBasicToolCalling:
         end_time = time.time()
         execution_time = end_time - start_time
         
-        assert response.choices[0].message.content is not None
+        assert response is not None
         # Should mention both Fibonacci numbers
-        content = response.choices[0].message.content
+        content = response
         assert any(str(num) in content for num in [55, 144])  # 10th=55, 12th=144
 
     def test_mixed_tool_types(self, client):
@@ -193,8 +193,8 @@ class TestBasicToolCalling:
             max_tool_calls=5
         )
         
-        assert response.choices[0].message.content is not None
-        content = response.choices[0].message.content
+        assert response is not None
+        content = response
         assert "30" in content  # Addition result
         assert "HELLO WORLD" in content  # Formatted text
 
@@ -217,8 +217,8 @@ class TestStructuredOutput:
             response_format=MathResult
         )
         
-        assert hasattr(response.choices[0].message, 'parsed')
-        parsed = response.choices[0].message.parsed
+        assert response is not None
+        parsed = response
         assert isinstance(parsed, MathResult)
         assert parsed.result == 42.0
         assert parsed.operation == "add"
@@ -234,8 +234,8 @@ class TestStructuredOutput:
             response_format=ComprehensiveResponse
         )
         
-        assert hasattr(response.choices[0].message, 'parsed')
-        parsed = response.choices[0].message.parsed
+        assert response is not None
+        parsed = response
         assert isinstance(parsed, ComprehensiveResponse)
         assert len(parsed.calculations) == 3
         assert parsed.total_operations == 3
@@ -251,8 +251,8 @@ class TestStructuredOutput:
             response_format=MathResult
         )
         
-        assert hasattr(response.choices[0].message, 'parsed')
-        parsed = response.choices[0].message.parsed
+        assert response is not None
+        parsed = response
         assert isinstance(parsed, MathResult)
         assert parsed.result == 56.0
 
@@ -276,8 +276,8 @@ class TestAsyncFunctionality:
             max_tool_calls=3
         )
         
-        assert response.choices[0].message.content is not None
-        assert "96" in response.choices[0].message.content
+        assert response is not None
+        assert "96" in response
 
     @pytest.mark.skipif(not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not available")
     @pytest.mark.asyncio
@@ -290,8 +290,8 @@ class TestAsyncFunctionality:
             max_tool_calls=3
         )
         
-        assert response.choices[0].message.content is not None
-        assert "100" in response.choices[0].message.content  # 50 * 2
+        assert response is not None
+        assert "100" in response  # 50 * 2
 
     @pytest.mark.skipif(not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not available")
     @pytest.mark.asyncio
@@ -304,7 +304,7 @@ class TestAsyncFunctionality:
             max_tool_calls=5
         )
         
-        assert response.choices[0].message.content is not None
+        assert response is not None
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
     @pytest.mark.skipif(not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not available")
@@ -318,8 +318,8 @@ class TestAsyncFunctionality:
             response_format=MathResult
         )
         
-        assert hasattr(response.choices[0].message, 'parsed')
-        parsed = response.choices[0].message.parsed
+        assert response is not None
+        parsed = response
         assert parsed.result == 54.0
 
 
@@ -343,8 +343,8 @@ class TestStreamingFunctionality:
         
         content_chunks = []
         for chunk in stream:
-            if chunk.choices[0].delta.content:
-                content_chunks.append(chunk.choices[0].delta.content)
+            if chunk:
+                content_chunks.append(chunk)
         
         full_content = "".join(content_chunks)
         assert "42" in full_content
@@ -365,8 +365,8 @@ class TestStreamingFunctionality:
         
         content_chunks = []
         async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                content_chunks.append(chunk.choices[0].delta.content)
+            if chunk:
+                content_chunks.append(chunk)
         
         full_content = "".join(content_chunks)
         assert "36" in full_content
@@ -390,8 +390,8 @@ class TestErrorHandling:
         )
         
         # Should handle the error gracefully and explain division by zero
-        assert response.choices[0].message.content is not None
-        content = response.choices[0].message.content.lower()
+        assert response is not None
+        content = response.lower()
         assert any(word in content for word in ["error", "zero", "cannot", "divide"])
 
     def test_max_tool_calls_limit(self, client):
@@ -404,7 +404,7 @@ class TestErrorHandling:
             max_tool_calls=3
         )
         
-        assert response.choices[0].message.content is not None
+        assert response is not None
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
     def test_streaming_with_structured_output_error(self, client):
@@ -441,8 +441,8 @@ class TestComprehensiveWorkflow:
             max_workers=4
         )
         
-        assert response.choices[0].message.content is not None
-        content = response.choices[0].message.content
+        assert response is not None
+        content = response
         
         # Check for expected results
         assert "60" in content  # 15*4
@@ -466,8 +466,8 @@ class TestComprehensiveWorkflow:
             max_workers=2
         )
         
-        assert hasattr(response.choices[0].message, 'parsed')
-        parsed = response.choices[0].message.parsed
+        assert response is not None
+        parsed = response
         assert isinstance(parsed, MathResult)
         assert parsed.result == 5.0
         assert parsed.operation == "divide"
@@ -495,11 +495,11 @@ class TestComprehensiveWorkflow:
         )
         
         # Both should work and give same result
-        assert hasattr(response_main.choices[0].message, 'parsed')
-        assert hasattr(response_beta.choices[0].message, 'parsed')
+        assert response_main is not None
+        assert response_beta is not None
         
-        parsed_main = response_main.choices[0].message.parsed
-        parsed_beta = response_beta.choices[0].message.parsed
+        parsed_main = response_main
+        parsed_beta = response_beta
         
         assert parsed_main.result == 132.0
         assert parsed_beta.result == 132.0
@@ -527,8 +527,8 @@ class TestPerformanceBenchmarks:
             max_workers=5
         )
         
-        assert response.choices[0].message.content is not None
-        content = response.choices[0].message.content
+        assert response is not None
+        content = response
         
         # Should contain multiple Fibonacci numbers
         fibonacci_sequence = [5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610]
@@ -550,4 +550,4 @@ if __name__ == "__main__":
     
     print("✅ Environment setup complete")
     print("Run tests with: python -m pytest tests/test_integration_live.py -v -s")
-    print("Note: These tests will consume OpenAI API credits") 
+    print("Note: These tests will consume OpenAI API credits")
