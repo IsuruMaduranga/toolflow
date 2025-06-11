@@ -1,8 +1,7 @@
 """
-Anthropic provider for toolflow (placeholder).
+Anthropic provider for toolflow.
 
-This is a skeleton implementation showing how to add support for other AI providers
-using the provider-specific folder structure.
+This module provides factory functions to create toolflow wrappers around Anthropic clients.
 """
 from .wrapper import AnthropicWrapper, AnthropicAsyncWrapper
 
@@ -13,12 +12,14 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
 
 
-def from_anthropic(client) -> "AnthropicWrapper":
+def from_anthropic(client, full_response: bool = False) -> "AnthropicWrapper":
     """
     Create a toolflow wrapper around an existing Anthropic client.
     
     Args:
         client: An existing Anthropic client instance
+        full_response: If True, return the full Anthropic response object. 
+                      If False (default), return only the content or parsed data.
     
     Returns:
         AnthropicWrapper that supports tool-py decorated functions
@@ -27,14 +28,21 @@ def from_anthropic(client) -> "AnthropicWrapper":
         import anthropic
         import toolflow
         
-        client = toolflow.from_anthropic(anthropic.Anthropic())
+        # Full response mode
+        client = toolflow.from_anthropic(anthropic.Anthropic(), full_response=True)
+        response = client.messages.create(...)
+        content = response.content[0].text
+        
+        # Simplified response mode (default)
+        client = toolflow.from_anthropic(anthropic.Anthropic(), full_response=False)
+        content = client.messages.create(...)  # Returns only content string
         
         @toolflow.tool
         def get_weather(city: str) -> str:
             return f"Weather in {city}: Sunny"
         
         response = client.messages.create(
-            model="claude-3-sonnet-20240229",
+            model="claude-3-5-sonnet-20241022",
             tools=[get_weather],
             messages=[{"role": "user", "content": "What's the weather in NYC?"}]
         )
@@ -42,20 +50,35 @@ def from_anthropic(client) -> "AnthropicWrapper":
     if not ANTHROPIC_AVAILABLE:
         raise ImportError("Anthropic library not installed. Install with: pip install anthropic")
     
-    return AnthropicWrapper(client)
+    return AnthropicWrapper(client, full_response)
 
 
-def from_anthropic_async(client) -> "AnthropicAsyncWrapper":
+def from_anthropic_async(client, full_response: bool = False) -> "AnthropicAsyncWrapper":
     """
     Create a toolflow wrapper around an existing Anthropic async client.
     
     Args:
         client: An existing Anthropic async client instance
+        full_response: If True, return the full Anthropic response object.
+                      If False (default), return only the content or parsed data.
     
     Returns:
         AnthropicAsyncWrapper that supports tool-py decorated functions
+    
+    Example:
+        import anthropic
+        import toolflow
+        
+        # Full response mode
+        client = toolflow.from_anthropic_async(anthropic.AsyncAnthropic(), full_response=True)
+        response = await client.messages.create(...)
+        content = response.content[0].text
+        
+        # Simplified response mode (default)
+        client = toolflow.from_anthropic_async(anthropic.AsyncAnthropic(), full_response=False)
+        content = await client.messages.create(...)  # Returns only content string
     """
     if not ANTHROPIC_AVAILABLE:
         raise ImportError("Anthropic library not installed. Install with: pip install anthropic")
     
-    return AnthropicAsyncWrapper(client) 
+    return AnthropicAsyncWrapper(client, full_response) 

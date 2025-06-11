@@ -10,9 +10,10 @@ from .providers.openai import from_openai, from_openai_async
 # Optional imports for other providers
 try:
     from .providers.anthropic import from_anthropic, from_anthropic_async
+    _ANTHROPIC_AVAILABLE = True
 except ImportError:
     # Anthropic provider not available, which is fine
-    pass
+    _ANTHROPIC_AVAILABLE = False
 
 __version__ = "0.1.0"
 
@@ -20,5 +21,8 @@ __all__ = [
     "tool",
     "from_openai", 
     "from_openai_async",
-    # Note: from_anthropic and from_anthropic_async are conditionally available
-]       
+]
+
+# Add Anthropic functions to __all__ if available
+if _ANTHROPIC_AVAILABLE:
+    __all__.extend(["from_anthropic", "from_anthropic_async"])       
