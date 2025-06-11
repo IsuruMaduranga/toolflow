@@ -64,8 +64,7 @@ class CompletionsWrapper:
         
         return response.choices[0].message.content
 
-    def parse(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> Union[Any, Iterator[Any]]:
-        """Create a completion with structured output parsing."""
+    def _prepare_handle_response_format(self, **kwargs):
         tools = kwargs.get('tools', None)
         response_format = kwargs.get('response_format', None)
         stream = kwargs.get('stream', False)
@@ -89,8 +88,8 @@ class CompletionsWrapper:
         
             kwargs['tools'] = tools
             kwargs['handle_structured_response_internal'] = True
-        
-        return self.create(model, messages, **kwargs)
+
+        return kwargs
 
     def create(
         self,
@@ -113,6 +112,8 @@ class CompletionsWrapper:
         Returns:
             OpenAI ChatCompletion response, potentially with tool results, or Iterator if stream=True
         """
+        kwargs = self._prepare_handle_response_format(**kwargs)
+
         tools = kwargs.get('tools', None)
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 10)

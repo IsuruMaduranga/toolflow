@@ -23,7 +23,7 @@ def main():
     client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
     # Toolflow enhanced API - returns parsed data directly
-    parsed_data = client.chat.completions.parse(
+    parsed_data = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
         tools=[fibonacci],
@@ -42,17 +42,17 @@ def main():
 
     print("Beta parsed data:", beta_parsed_data)  # Direct FibonacciResponse object
     
-    # For full response access, use full_response=True
-    full_client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")), full_response=True)
-    response = full_client.chat.completions.parse(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
-        tools=[fibonacci],
-        response_format=FibonacciResponse
-    )
-    print("Full response access:")
-    print(response.choices[0].message.parsed)
-    print(response.choices[0].message.content)
+    # # For full response access, use full_response=True
+    # full_client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")), full_response=True)
+    # response = full_client.beta.chat.completions.parse(
+    #     model="gpt-4o-mini",
+    #     messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
+    #     tools=[fibonacci],
+    #     response_format=FibonacciResponse
+    # )
+    # print("Full response access:")
+    # print(response.choices[0].message.parsed)
+    # print(response.choices[0].message.content)
 
 if __name__ == "__main__":
     main()

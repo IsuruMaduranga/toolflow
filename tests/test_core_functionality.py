@@ -252,15 +252,15 @@ class TestFullResponseParameter:
         assert hasattr(response, 'choices')
         assert response.choices[0].message.content == "Test content"
     
-    def test_parse_method_with_full_response_false(self, mock_openai_client):
-        """Test that parse() method respects full_response=False for simple responses."""
+    def test_create_method_with_response_format_full_response_false(self, mock_openai_client):
+        """Test that create() method with response_format respects full_response=False for simple responses."""
         client = from_openai(mock_openai_client, full_response=False)
         
         # Simple case without tools - should just return content
         mock_response = create_mock_response(content="Simple response")
         mock_openai_client.chat.completions.create.return_value = mock_response
         
-        response = client.chat.completions.parse(
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Hello"}]
         )

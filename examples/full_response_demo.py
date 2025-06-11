@@ -98,7 +98,7 @@ def main():
         class DemoModel(BaseModel):
             result: str
         
-        parsed_response = client_simple.chat.completions.parse(
+        parsed_response = client_simple.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Hello"}],
             response_format=DemoModel

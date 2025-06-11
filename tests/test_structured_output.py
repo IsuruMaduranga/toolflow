@@ -139,14 +139,11 @@ class TestStructuredOutputSyncWrapper:
             return f"Weather in {city}: Sunny, 72°F"
         return get_weather
 
-    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_method_exists(self, toolflow_client):
-        """Test that parse method is available on completions."""
-        assert hasattr(toolflow_client.chat.completions, 'parse')
+
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_with_structured_output_no_tools(self, toolflow_client, mock_openai_client):
-        """Test parse method with structured output but no tools."""
+    def test_structured_output_with_create_method(self, toolflow_client, mock_openai_client):
+        """Test structured output via create method with response_format."""
         # Setup mock response
         mock_response = Mock()
         mock_response.choices = [Mock()]
@@ -159,7 +156,7 @@ class TestStructuredOutputSyncWrapper:
         
         mock_openai_client.chat.completions.create.return_value = mock_response
 
-        result = toolflow_client.chat.completions.parse(
+        result = toolflow_client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": "What's the weather?"}],
             response_format=WeatherReport
@@ -171,8 +168,8 @@ class TestStructuredOutputSyncWrapper:
         assert len(call_args[1]['tools']) == 1  # Response format tool was added
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_with_tools_and_structured_output(self, toolflow_client, mock_openai_client, weather_tool):
-        """Test parse method with both tools and structured output."""
+    def test_structured_output_create_with_tools(self, toolflow_client, mock_openai_client, weather_tool):
+        """Test create method with both tools and structured output."""
         # Setup mock response
         mock_response = Mock()
         mock_response.choices = [Mock()]
@@ -185,7 +182,7 @@ class TestStructuredOutputSyncWrapper:
         
         mock_openai_client.chat.completions.create.return_value = mock_response
 
-        result = toolflow_client.chat.completions.parse(
+        result = toolflow_client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": "What's the weather?"}],
             tools=[weather_tool],
@@ -197,35 +194,15 @@ class TestStructuredOutputSyncWrapper:
         assert len(call_args[1]['tools']) == 2  # Original tool + response format tool
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_streaming_not_supported(self, toolflow_client):
-        """Test that parse method doesn't support streaming."""
+    def test_create_streaming_not_supported_with_response_format(self, toolflow_client):
+        """Test that create method doesn't support streaming with response_format."""
         with pytest.raises(ValueError, match="response_format is not supported for streaming"):
-            toolflow_client.chat.completions.parse(
+            toolflow_client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": "Test"}],
                 response_format=WeatherReport,
                 stream=True
             )
-
-    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_without_response_format(self, toolflow_client, mock_openai_client, weather_tool):
-        """Test parse method without response_format (should work like regular create)."""
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message = Mock()
-        mock_response.choices[0].message.tool_calls = None  # No tool calls
-        mock_openai_client.chat.completions.create.return_value = mock_response
-
-        result = toolflow_client.chat.completions.parse(
-            model="gpt-4",
-            messages=[{"role": "user", "content": "Test"}],
-            tools=[weather_tool]
-        )
-
-        # Should call create method normally
-        mock_openai_client.chat.completions.create.assert_called_once()
-        call_args = mock_openai_client.chat.completions.create.call_args
-        assert len(call_args[1]['tools']) == 1  # Only the original tool
 
 
 class TestStructuredOutputBetaWrapper:
@@ -326,29 +303,29 @@ class TestStructuredOutputErrorHandling:
         """Toolflow wrapped client for testing."""
         return toolflow.from_openai(mock_openai_client)
 
-    def test_parse_without_pydantic(self, toolflow_client):
-        """Test parse method when Pydantic is not available."""
+    def test_create_without_pydantic(self, toolflow_client):
+        """Test create method with response_format when Pydantic is not available."""
         with patch('toolflow.providers.openai.structured_output.PYDANTIC_AVAILABLE', False):
             with pytest.raises(ImportError, match="Pydantic is required for structured output"):
-                toolflow_client.chat.completions.parse(
+                toolflow_client.chat.completions.create(
                     model="gpt-4",
                     messages=[{"role": "user", "content": "Test"}],
                     response_format=dict  # Not a Pydantic model
                 )
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_invalid_response_format(self, toolflow_client):
-        """Test parse method with invalid response format."""
+    def test_create_invalid_response_format(self, toolflow_client):
+        """Test create method with invalid response format."""
         with pytest.raises(ValueError, match="response_format must be a Pydantic model"):
-            toolflow_client.chat.completions.parse(
+            toolflow_client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": "Test"}],
                 response_format=str  # Not a Pydantic model
             )
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_malformed_tool_response(self, toolflow_client, mock_openai_client):
-        """Test handling of malformed tool response."""
+    def test_create_malformed_tool_response(self, toolflow_client, mock_openai_client):
+        """Test handling of malformed tool response in create method."""
         # Setup mock response with malformed JSON
         mock_response = Mock()
         mock_response.choices = [Mock()]
@@ -360,7 +337,7 @@ class TestStructuredOutputErrorHandling:
         mock_openai_client.chat.completions.create.return_value = mock_response
 
         with pytest.raises(json.JSONDecodeError):
-            toolflow_client.chat.completions.parse(
+            toolflow_client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": "Test"}],
                 response_format=WeatherReport
@@ -396,9 +373,7 @@ class TestStructuredOutputAsyncWrapper:
             return f"Weather in {city}: Sunny, 72°F"
         return get_weather_async
 
-    def test_async_parse_method_exists(self, async_toolflow_client):
-        """Test that parse method is available on async completions."""
-        assert hasattr(async_toolflow_client.chat.completions, 'parse')
+
 
     def test_async_beta_parse_method_exists(self, async_toolflow_client):
         """Test that parse method is available on async beta completions."""

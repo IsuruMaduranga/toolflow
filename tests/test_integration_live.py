@@ -208,9 +208,9 @@ class TestStructuredOutput:
         return toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_method_basic(self, client):
-        """Test basic parse method functionality."""
-        response = client.chat.completions.parse(
+    def test_beta_parse_method_basic(self, client):
+        """Test basic beta parse method functionality."""
+        response = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Calculate 25 + 17 and explain the operation"}],
             tools=[simple_calculator],
@@ -225,9 +225,9 @@ class TestStructuredOutput:
         assert parsed.operands == [25.0, 17.0]
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_method_complex(self, client):
-        """Test parse method with complex structured output."""
-        response = client.chat.completions.parse(
+    def test_beta_parse_method_complex(self, client):
+        """Test beta parse method with complex structured output."""
+        response = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Perform these calculations: 10+5, 20*3, 50/2. Provide a summary."}],
             tools=[simple_calculator],
@@ -311,7 +311,7 @@ class TestAsyncFunctionality:
     @pytest.mark.asyncio
     async def test_async_structured_output(self, async_client):
         """Test async client with structured output."""
-        response = await async_client.chat.completions.parse(
+        response = await async_client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Calculate 6 * 9 and explain"}],
             tools=[simple_calculator],
@@ -406,19 +406,6 @@ class TestErrorHandling:
         
         assert response is not None
 
-    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_streaming_with_structured_output_error(self, client):
-        """Test that streaming with structured output raises appropriate error."""
-        with pytest.raises(ValueError, match="response_format is not supported for streaming"):
-            client.chat.completions.parse(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test"}],
-                tools=[simple_calculator],
-                response_format=MathResult,
-                stream=True
-            )
-
-
 class TestComprehensiveWorkflow:
     """Test comprehensive workflows combining multiple features."""
 
@@ -457,7 +444,7 @@ class TestComprehensiveWorkflow:
         """Test full async workflow with structured output."""
         async_client = toolflow.from_openai_async(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
         
-        response = await async_client.chat.completions.parse(
+        response = await async_client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Calculate 20/4 and explain the division operation"}],
             tools=[simple_calculator],
@@ -474,17 +461,9 @@ class TestComprehensiveWorkflow:
         assert parsed.operands == [20.0, 4.0]
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_beta_vs_main_api_comparison(self, client):
-        """Test comparing beta API vs main API structured output."""
+    def test_beta_api_structured_output_comprehensive(self, client):
+        """Test beta API structured output with comprehensive workflow."""
         message = [{"role": "user", "content": "Multiply 11 by 12 and explain the calculation"}]
-        
-        # Main API
-        response_main = client.chat.completions.parse(
-            model="gpt-4o-mini",
-            messages=message,
-            tools=[simple_calculator],
-            response_format=MathResult
-        )
         
         # Beta API
         response_beta = client.beta.chat.completions.parse(
@@ -494,16 +473,13 @@ class TestComprehensiveWorkflow:
             response_format=MathResult
         )
         
-        # Both should work and give same result
-        assert response_main is not None
+        # Should work and give correct result
         assert response_beta is not None
         
-        parsed_main = response_main
         parsed_beta = response_beta
         
-        assert parsed_main.result == 132.0
         assert parsed_beta.result == 132.0
-        assert parsed_main.operation == parsed_beta.operation == "multiply"
+        assert parsed_beta.operation == "multiply"
 
 
 # Performance benchmark (optional, can be skipped for regular testing)

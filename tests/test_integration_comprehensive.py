@@ -78,16 +78,13 @@ class TestStructuredOutputIntegration:
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
     def test_structured_output_functionality_exists(self, toolflow_client):
-        """Test that structured output parse method exists and can be called."""
-        # Test that parse method exists
-        assert hasattr(toolflow_client.chat.completions, 'parse')
-        
+        """Test that structured output functionality exists via beta API."""
         # Test that beta parse method exists
         assert hasattr(toolflow_client.beta.chat.completions, 'parse')
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_parse_method_adds_response_tool(self, toolflow_client, mock_openai_client, weather_tools):
-        """Test that parse method adds response format tool when response_format is provided."""
+    def test_create_method_adds_response_tool(self, toolflow_client, mock_openai_client, weather_tools):
+        """Test that create method adds response format tool when response_format is provided."""
         # Mock response to prevent actual tool execution
         mock_response = Mock()
         mock_response.choices = [Mock()]
@@ -95,7 +92,7 @@ class TestStructuredOutputIntegration:
         mock_response.choices[0].message.tool_calls = None
         mock_openai_client.chat.completions.create.return_value = mock_response
 
-        toolflow_client.chat.completions.parse(
+        toolflow_client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": "Test"}],
             tools=weather_tools,
@@ -238,7 +235,7 @@ class TestErrorHandlingIntegration:
             return param
 
         with pytest.raises(ValueError, match="response_format is not supported for streaming"):
-            toolflow_client.chat.completions.parse(
+            toolflow_client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": "Test"}],
                 tools=[test_tool],
@@ -377,10 +374,10 @@ class TestFeatureInteroperability:
         mock_response.choices = [Mock()]
         mock_response.choices[0].message = Mock()
         mock_response.choices[0].message.tool_calls = None
-        mock_openai_client.chat.completions.create.return_value = mock_response
+        mock_openai_client.beta.chat.completions.parse.return_value = mock_response
 
         # Test with multiple enhanced features
-        result = toolflow_client.chat.completions.parse(
+        result = toolflow_client.beta.chat.completions.parse(
             model="gpt-4",
             messages=[{"role": "user", "content": "Get analysis"}],
             tools=[data_tool],
@@ -391,19 +388,20 @@ class TestFeatureInteroperability:
         )
 
         # Verify all parameters were handled correctly
-        mock_openai_client.chat.completions.create.assert_called_once()
-        call_args = mock_openai_client.chat.completions.create.call_args
+        mock_openai_client.beta.chat.completions.parse.assert_called_once()
+        call_args = mock_openai_client.beta.chat.completions.parse.call_args
 
-        # Check tools were processed with response format tool added
+        # Check tools were processed correctly (beta API doesn't auto-add response format tool)
         tools = call_args[1]['tools']
-        assert len(tools) == 2  # Original tool + response format tool
+        assert len(tools) == 1  # Only original tool (beta API handles response_format natively)
 
         # Check toolflow parameters were filtered out
         call_kwargs = call_args[1]
         assert 'parallel_tool_execution' not in call_kwargs
         assert 'max_workers' not in call_kwargs
         assert 'max_tool_calls' not in call_kwargs
-        assert 'response_format' not in call_kwargs
+        # response_format should be passed through to beta API
+        assert 'response_format' in call_kwargs
 
     def test_schema_metadata_consistency(self):
         """Test that schema metadata is consistent across features."""

@@ -33,7 +33,7 @@ content = client.chat.completions.create(
 print(content)  # Direct string output: "Weather in NYC: Sunny, 72°F"
 
 # 5. For structured outputs, pass a Pydantic model to the API
-parsed_data = client.chat.completions.parse(
+parsed_data = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What's the weather in NYC?"}],
     tools=[get_weather],
@@ -191,7 +191,7 @@ class FibonacciResponse(BaseModel):
 client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
 # Toolflow enhanced API (returns parsed data directly)
-parsed_data = client.chat.completions.parse(
+parsed_data = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
     tools=[fibonacci], # Toolcalling works seamlessly
@@ -199,7 +199,7 @@ parsed_data = client.chat.completions.parse(
 )
 
 # OpenAI Beta API (returns parsed data directly)
-beta_parsed_data = client.beta.chat.completions.parse(
+beta_parsed_data = client.beta.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
     tools=[fibonacci],
@@ -211,7 +211,7 @@ print(beta_parsed_data)  # Direct FibonacciResponse object
 
 # For full response access, use full_response=True
 full_client = toolflow.from_openai(openai.OpenAI(), full_response=True)
-response = full_client.chat.completions.parse(...)
+response = full_client.chat.completions.create(...)
 print(response.choices[0].message.parsed)
 print(response.choices[0].message.content)
 ```
@@ -267,6 +267,7 @@ client.chat.completions.create(
 
     # Toolflow parameters
     tools: list,
+    response_format: Pydantic model,
     parallel_tool_execution: bool = False,
     max_tool_calls: int = 10,
     max_workers: int = 10,
@@ -275,6 +276,7 @@ client.chat.completions.create(
 )
 ```
 - `tools`: A list of functions decorated with @toolflow.tool.
+- `response_format`: A Pydantic model for structured output.
 - `parallel_tool_execution`: If True, executes multiple tool calls concurrently.
 - `max_tool_calls`: A safety limit for the number of tool call rounds in a single turn.
 - `max_workers`: The maximum number of threads for running synchronous tools in parallel.
