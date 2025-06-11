@@ -166,24 +166,32 @@ class TestAsyncErrorHandling:
     
     @pytest.mark.asyncio
     async def test_async_tool_execution_error(self, async_toolflow_client, mock_async_openai_client):
-        """Test handling of tool execution errors in async context."""
+        """Test handling of tool execution errors in async context with graceful error handling."""
         # Tool call that will fail
         tool_call = create_mock_tool_call("call_fail", "failing_tool", {"should_fail": True})
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="Async tool error was handled gracefully")
         
-        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when async tool fails
-        with pytest.raises(Exception) as exc_info:
-            await async_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test error handling"}],
-                tools=[failing_tool]
-            )
+        # With graceful error handling (default), should not raise exception
+        response = await async_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test error handling"}],
+            tools=[failing_tool]
+        )
         
-        # Verify the exception contains tool error information
-        assert "Error executing tool failing_tool" in str(exc_info.value)
-        assert "This tool failed intentionally" in str(exc_info.value)
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "Async tool error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_async_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool failing_tool" in tool_result_messages[0]['content']
+        assert "This tool failed intentionally" in tool_result_messages[0]['content']
     
     @pytest.mark.asyncio
     async def test_unknown_tool_error(self, async_toolflow_client, mock_async_openai_client):
@@ -207,7 +215,7 @@ class TestAsyncErrorHandling:
     
     @pytest.mark.asyncio
     async def test_invalid_tool_arguments(self, async_toolflow_client, mock_async_openai_client):
-        """Test handling of invalid tool arguments."""
+        """Test handling of invalid tool arguments with graceful error handling."""
         # Tool call with invalid JSON arguments
         tool_call = Mock()
         tool_call.id = "call_invalid"
@@ -215,20 +223,28 @@ class TestAsyncErrorHandling:
         tool_call.function.arguments = '{"a": "not_a_number", "b": 5}'  # Invalid argument type
         
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="Async type error was handled gracefully")
         
-        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when tool arguments are invalid
-        with pytest.raises(Exception) as exc_info:
-            await async_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test invalid args"}],
-                tools=[simple_math_tool]
-            )
+        # With graceful error handling (default), should not raise exception
+        response = await async_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test invalid args"}],
+            tools=[simple_math_tool]
+        )
         
-        # Verify the exception contains type error information
-        assert "Error executing tool simple_math_tool" in str(exc_info.value)
-        assert "can only concatenate str" in str(exc_info.value)
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "Async type error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_async_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool simple_math_tool" in tool_result_messages[0]['content']
+        assert "can only concatenate str" in tool_result_messages[0]['content']
 
 
 class TestAsyncLimits:

@@ -106,6 +106,7 @@ class CompletionsWrapper:
             parallel_tool_execution: Whether to execute multiple tool calls in parallel (default: False)
             max_tool_calls: Maximum number of tool calls to execute
             max_workers: Maximum number of worker threads to use for parallel execution of sync tools
+            graceful_error_handling: Whether to handle tool execution errors gracefully (default: True)
             stream: Whether to stream the response (default: False)
             **kwargs: All other OpenAI chat completion parameters
         
@@ -116,6 +117,7 @@ class CompletionsWrapper:
         parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
         max_tool_calls = kwargs.get('max_tool_calls', 10)
         max_workers = kwargs.get('max_workers', 10)
+        graceful_error_handling = kwargs.get('graceful_error_handling', True)
         response_format = kwargs.get('response_format', None)
         stream = kwargs.get('stream', False)
         full_response = kwargs.get('full_response', self._full_response)
@@ -129,8 +131,9 @@ class CompletionsWrapper:
                 parallel_tool_execution=parallel_tool_execution,
                 max_tool_calls=max_tool_calls,
                 max_workers=max_workers,
+                graceful_error_handling=graceful_error_handling,
                 full_response=full_response,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']}
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'graceful_error_handling', 'full_response']}
             )
         
         response = None
@@ -144,7 +147,7 @@ class CompletionsWrapper:
                     raise Exception("Max tool calls reached without finding a solution")
                 
                 # Make the API call
-                excluded_kwargs = ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response']
+                excluded_kwargs = ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'graceful_error_handling', 'full_response']
                 if kwargs.get('handle_structured_response_internal', False):
                     excluded_kwargs.extend(['response_format', 'handle_structured_response_internal'])
                 
@@ -179,7 +182,8 @@ class CompletionsWrapper:
                         tool_functions,
                         tool_calls,
                         parallel_tool_execution, 
-                        max_workers=max_workers
+                        max_workers=max_workers,
+                        graceful_error_handling=graceful_error_handling
                     )
                     max_tool_calls -= len(execution_response)
                     current_messages.extend(execution_response)
@@ -191,7 +195,7 @@ class CompletionsWrapper:
             response = self._original_completions.create(
                 model=model,
                 messages=messages,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'full_response', 'is_structured_parse']}
+                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'graceful_error_handling', 'full_response', 'is_structured_parse']}
             )
         
         return self._extract_response_content(response, full_response)
@@ -204,6 +208,7 @@ class CompletionsWrapper:
         parallel_tool_execution: bool = False,
         max_tool_calls: int = 10,
         max_workers: int = 10,
+        graceful_error_handling: bool = True,
         full_response: bool = None,
         **kwargs
     ) -> Iterator[Any]:
@@ -284,7 +289,8 @@ class CompletionsWrapper:
                             tool_functions,
                             tool_calls,
                             parallel_tool_execution,
-                            max_workers=max_workers
+                            max_workers=max_workers,
+                            graceful_error_handling=graceful_error_handling
                         )
                         remaining_tool_calls -= len(execution_response)
                         current_messages.extend(execution_response)

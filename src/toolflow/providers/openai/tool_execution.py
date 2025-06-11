@@ -29,7 +29,7 @@ def execute_openai_tools_sync(
     tool_calls: List[Any],
     parallel_tool_execution: bool = False,
     max_workers: int = 10,
-    graceful_error_handling: bool = False
+    graceful_error_handling: bool = True
 ) -> List[Dict[str, Any]]:
     """Execute OpenAI tool calls synchronously."""
     
@@ -94,7 +94,7 @@ async def execute_openai_tools_async(
     tool_calls: List[Any],
     parallel_tool_execution: bool = False,
     max_workers: int = 10,
-    graceful_error_handling: bool = False
+    graceful_error_handling: bool = True
 ) -> List[Dict[str, Any]]:
     """Execute OpenAI tool calls asynchronously, separating sync and async tools."""
     
@@ -173,7 +173,14 @@ async def execute_openai_tools_async(
                                 "content": json.dumps(result) if not isinstance(result, str) else result
                             }
                         except Exception as e:
-                            raise Exception(f"Error executing tool {tc.function.name}: {e}")
+                            if graceful_error_handling:
+                                return {
+                                    "tool_call_id": tc.id,
+                                    "role": "tool",
+                                    "content": f"Error executing tool {tc.function.name}: {e}"
+                                }
+                            else:
+                                raise Exception(f"Error executing tool {tc.function.name}: {e}")
                     
                     futures.append(executor.submit(execute_sync_tool))
                 
@@ -202,7 +209,14 @@ async def execute_openai_tools_async(
                             "content": json.dumps(result) if not isinstance(result, str) else result
                         }
                     except Exception as e:
-                        raise Exception(f"Error executing tool {tc.function.name}: {e}")
+                        if graceful_error_handling:
+                            return {
+                                "tool_call_id": tc.id,
+                                "role": "tool",
+                                "content": f"Error executing tool {tc.function.name}: {e}"
+                            }
+                        else:
+                            raise Exception(f"Error executing tool {tc.function.name}: {e}")
                 
                 async_tasks.append(execute_async_tool())
             
@@ -229,6 +243,16 @@ async def execute_openai_tools_async(
             
             return ordered_results
         except Exception as e:
-            raise Exception(f"Error in parallel tool execution: {e}")
+            if graceful_error_handling:
+                # If graceful error handling is enabled, we should have already caught
+                # errors at the individual tool level, so this shouldn't happen.
+                # But just in case, return an error message
+                return [{
+                    "tool_call_id": "unknown",
+                    "role": "tool", 
+                    "content": f"Error in parallel tool execution: {e}"
+                }]
+            else:
+                raise Exception(f"Error in parallel tool execution: {e}")
     
     return []

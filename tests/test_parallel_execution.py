@@ -330,46 +330,80 @@ class TestParallelExecutionErrorHandling:
     """Test error handling in parallel execution context."""
     
     def test_parallel_execution_with_failing_tool(self, sync_toolflow_client, mock_openai_client):
-        """Test that parallel execution raises exception when tool fails."""
+        """Test that parallel execution handles tool failures gracefully."""
         tool_call_1 = create_mock_tool_call("call_success", "simple_math_tool", {"a": 1, "b": 2})
         tool_call_2 = create_mock_tool_call("call_fail", "failing_tool", {"should_fail": True})
         
         mock_response_1 = create_mock_response(tool_calls=[tool_call_1, tool_call_2])
+        mock_response_2 = create_mock_response(content="Parallel errors were handled gracefully")
         
-        mock_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when any tool in parallel execution fails
-        with pytest.raises(Exception) as exc_info:
-            sync_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test parallel errors"}],
-                tools=[simple_math_tool, failing_tool],
-                parallel_tool_execution=True
-            )
+        # With graceful error handling (default), should not raise exception
+        response = sync_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test parallel errors"}],
+            tools=[simple_math_tool, failing_tool],
+            parallel_tool_execution=True
+        )
         
-        # Verify the exception contains parallel tool execution error information
-        assert "Error in parallel tool execution" in str(exc_info.value)
-        assert "Error executing tool failing_tool" in str(exc_info.value)
+        # Should get response after errors are handled gracefully
+        assert response.choices[0].message.content == "Parallel errors were handled gracefully"
+        
+        # Check that errors were passed to the model in second call
+        second_call_args = mock_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        # Should have both results: one success, one error
+        assert len(tool_result_messages) == 2
+        
+        # Check for successful execution
+        success_msg = next((msg for msg in tool_result_messages if msg['tool_call_id'] == 'call_success'), None)
+        assert success_msg is not None
+        assert "3" in success_msg['content']  # 1 + 2 = 3
+        
+        # Check for error message
+        error_msg = next((msg for msg in tool_result_messages if msg['tool_call_id'] == 'call_fail'), None)
+        assert error_msg is not None
+        assert "Error executing tool failing_tool" in error_msg['content']
     
     @pytest.mark.asyncio
     async def test_async_parallel_error_handling(self, async_toolflow_client, mock_async_openai_client):
-        """Test error handling in async parallel execution."""
+        """Test error handling in async parallel execution with graceful error handling."""
         tool_call_1 = create_mock_tool_call("call_success", "async_math_tool", {"a": 5, "b": 5})
         tool_call_2 = create_mock_tool_call("call_fail", "failing_tool", {"should_fail": True})
         
         mock_response_1 = create_mock_response(tool_calls=[tool_call_1, tool_call_2])
+        mock_response_2 = create_mock_response(content="Async parallel errors were handled gracefully")
         
-        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when any tool in async parallel execution fails
-        with pytest.raises(Exception) as exc_info:
-            await async_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test async parallel errors"}],
-                tools=[async_math_tool, failing_tool],
-                parallel_tool_execution=True
-            )
+        # With graceful error handling (default), should not raise exception
+        response = await async_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test async parallel errors"}],
+            tools=[async_math_tool, failing_tool],
+            parallel_tool_execution=True
+        )
         
-        # Verify the exception contains async parallel tool execution error information
-        assert "Error in parallel tool execution" in str(exc_info.value)
-        assert "Error executing tool failing_tool" in str(exc_info.value)
+        # Should get response after errors are handled gracefully
+        assert response.choices[0].message.content == "Async parallel errors were handled gracefully"
+        
+        # Check that errors were passed to the model in second call
+        second_call_args = mock_async_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        # Should have both results: one success, one error
+        assert len(tool_result_messages) == 2
+        
+        # Check for successful execution
+        success_msg = next((msg for msg in tool_result_messages if msg['tool_call_id'] == 'call_success'), None)
+        assert success_msg is not None
+        assert "10" in success_msg['content']  # 5 + 5 = 10
+        
+        # Check for error message
+        error_msg = next((msg for msg in tool_result_messages if msg['tool_call_id'] == 'call_fail'), None)
+        assert error_msg is not None
+        assert "Error executing tool failing_tool" in error_msg['content']

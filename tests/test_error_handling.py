@@ -26,18 +26,46 @@ class TestToolExecutionErrors:
     """Test errors that occur during tool execution."""
     
     def test_tool_function_raises_exception(self, sync_toolflow_client, mock_openai_client):
-        """Test handling when tool function raises an exception."""
+        """Test handling when tool function raises an exception with graceful error handling."""
+        tool_call = create_mock_tool_call("call_fail", "failing_tool", {"should_fail": True})
+        mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="Tool error was handled gracefully")
+        
+        mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
+        
+        # With graceful error handling (default), should not raise exception
+        response = sync_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test tool error"}],
+            tools=[failing_tool]
+        )
+        
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "Tool error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool failing_tool" in tool_result_messages[0]['content']
+        assert "This tool failed intentionally" in tool_result_messages[0]['content']
+    
+    def test_tool_function_raises_exception_without_graceful_handling(self, sync_toolflow_client, mock_openai_client):
+        """Test that exceptions are raised when graceful error handling is disabled."""
         tool_call = create_mock_tool_call("call_fail", "failing_tool", {"should_fail": True})
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
         
         mock_openai_client.chat.completions.create.side_effect = [mock_response_1]
         
-        # Should raise an exception when tool fails
+        # Should raise an exception when graceful error handling is disabled
         with pytest.raises(Exception) as exc_info:
             sync_toolflow_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Test tool error"}],
-                tools=[failing_tool]
+                tools=[failing_tool],
+                graceful_error_handling=False
             )
         
         # Verify the exception contains tool error information
@@ -46,51 +74,67 @@ class TestToolExecutionErrors:
     
     @pytest.mark.asyncio
     async def test_async_tool_execution_error(self, async_toolflow_client, mock_async_openai_client):
-        """Test async tool execution error handling."""
+        """Test async tool execution error handling with graceful error handling."""
         tool_call = create_mock_tool_call("call_fail", "failing_tool", {"should_fail": True})
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="Async tool error was handled gracefully")
         
-        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when async tool fails
-        with pytest.raises(Exception) as exc_info:
-            await async_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test async error"}],
-                tools=[failing_tool]
-            )
+        # With graceful error handling (default), should not raise exception
+        response = await async_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test async error"}],
+            tools=[failing_tool]
+        )
         
-        # Verify the exception contains tool error information
-        assert "Error executing tool failing_tool" in str(exc_info.value)
-        assert "This tool failed intentionally" in str(exc_info.value)
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "Async tool error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_async_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool failing_tool" in tool_result_messages[0]['content']
+        assert "This tool failed intentionally" in tool_result_messages[0]['content']
     
     def test_division_by_zero_error_handling(self, sync_toolflow_client, mock_openai_client):
-        """Test handling of division by zero errors."""
+        """Test handling of division by zero errors with graceful error handling."""
         from .conftest import divide_tool
         
         tool_call = create_mock_tool_call("call_div", "divide_tool", {"a": 10, "b": 0})
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="Division error was handled gracefully")
         
-        mock_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when division by zero occurs
-        with pytest.raises(Exception) as exc_info:
-            sync_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Divide 10 by 0"}],
-                tools=[divide_tool]
-            )
+        # With graceful error handling (default), should not raise exception
+        response = sync_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Divide 10 by 0"}],
+            tools=[divide_tool]
+        )
         
-        # Verify the exception contains division by zero error
-        assert "Error executing tool divide_tool" in str(exc_info.value)
-        assert "division by zero" in str(exc_info.value)
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "Division error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool divide_tool" in tool_result_messages[0]['content']
+        assert "division by zero" in tool_result_messages[0]['content']
 
 
 class TestInvalidArguments:
     """Test handling of invalid tool arguments."""
     
     def test_malformed_json_arguments(self, sync_toolflow_client, mock_openai_client):
-        """Test handling of malformed JSON in tool arguments."""
+        """Test handling of malformed JSON in tool arguments with graceful error handling."""
         # Create tool call with invalid JSON
         tool_call = Mock()
         tool_call.id = "call_bad_json"
@@ -98,59 +142,83 @@ class TestInvalidArguments:
         tool_call.function.arguments = '{"a": 10, "b":}'  # Invalid JSON
         
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="JSON error was handled gracefully")
         
-        mock_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when JSON is malformed
-        with pytest.raises(Exception) as exc_info:
-            sync_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test bad JSON"}],
-                tools=[simple_math_tool]
-            )
+        # With graceful error handling (default), should not raise exception
+        response = sync_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test bad JSON"}],
+            tools=[simple_math_tool]
+        )
         
-        # Verify the exception contains JSON parsing error
-        assert "Error executing tool simple_math_tool" in str(exc_info.value)
-        assert "Expecting value" in str(exc_info.value)
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "JSON error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool simple_math_tool" in tool_result_messages[0]['content']
+        assert "Expecting value" in tool_result_messages[0]['content']
     
     def test_wrong_argument_types(self, sync_toolflow_client, mock_openai_client):
-        """Test handling of wrong argument types."""
+        """Test handling of wrong argument types with graceful error handling."""
         # Valid JSON but wrong types
         tool_call = create_mock_tool_call("call_wrong_type", "simple_math_tool", {"a": "not_a_number", "b": 5})
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="Type error was handled gracefully")
         
-        mock_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when types are wrong
-        with pytest.raises(Exception) as exc_info:
-            sync_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test wrong types"}],
-                tools=[simple_math_tool]
-            )
+        # With graceful error handling (default), should not raise exception
+        response = sync_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test wrong types"}],
+            tools=[simple_math_tool]
+        )
         
-        # Verify the exception contains type error information
-        assert "Error executing tool simple_math_tool" in str(exc_info.value)
-        assert "can only concatenate str" in str(exc_info.value)
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "Type error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool simple_math_tool" in tool_result_messages[0]['content']
+        assert "can only concatenate str" in tool_result_messages[0]['content']
     
     def test_missing_required_arguments(self, sync_toolflow_client, mock_openai_client):
-        """Test handling of missing required arguments."""
+        """Test handling of missing required arguments with graceful error handling."""
         tool_call = create_mock_tool_call("call_missing", "simple_math_tool", {"a": 5})  # Missing 'b'
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="Missing argument error was handled gracefully")
         
-        mock_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when required arguments are missing
-        with pytest.raises(Exception) as exc_info:
-            sync_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test missing args"}],
-                tools=[simple_math_tool]
-            )
+        # With graceful error handling (default), should not raise exception
+        response = sync_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test missing args"}],
+            tools=[simple_math_tool]
+        )
         
-        # Verify the exception contains missing argument error
-        assert "Error executing tool simple_math_tool" in str(exc_info.value)
-        assert "missing 1 required positional argument" in str(exc_info.value)
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "Missing argument error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool simple_math_tool" in tool_result_messages[0]['content']
+        assert "missing 1 required positional argument" in tool_result_messages[0]['content']
     
     def test_empty_tool_arguments(self, sync_toolflow_client, mock_openai_client):
         """Test handling of empty tool arguments."""
@@ -309,7 +377,7 @@ class TestEdgeCaseErrors:
         assert response.choices[0].message.content == "Large args handled"
     
     def test_null_and_undefined_values(self, sync_toolflow_client, mock_openai_client):
-        """Test handling of null and undefined values in arguments."""
+        """Test handling of null and undefined values in arguments with graceful error handling."""
         # Tool call with null values
         tool_call = Mock()
         tool_call.id = "call_null"
@@ -317,18 +385,26 @@ class TestEdgeCaseErrors:
         tool_call.function.arguments = '{"a": null, "b": 5}'
         
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
+        mock_response_2 = create_mock_response(content="Null value error was handled gracefully")
         
-        mock_openai_client.chat.completions.create.side_effect = [mock_response_1]
+        mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
-        # Should raise an exception when null values cause type errors
-        with pytest.raises(Exception) as exc_info:
-            sync_toolflow_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Test null values"}],
-                tools=[simple_math_tool]
-            )
+        # With graceful error handling (default), should not raise exception
+        response = sync_toolflow_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Test null values"}],
+            tools=[simple_math_tool]
+        )
         
-        # Verify the exception contains type error for null values
-        assert "Error executing tool simple_math_tool" in str(exc_info.value)
-        assert "unsupported operand type(s) for +: 'NoneType' and 'int'" in str(exc_info.value)
+        # Should get response after error is handled gracefully
+        assert response.choices[0].message.content == "Null value error was handled gracefully"
+        
+        # Check that error was passed to the model in second call
+        second_call_args = mock_openai_client.chat.completions.create.call_args_list[1]
+        tool_messages = second_call_args[1]['messages']
+        tool_result_messages = [msg for msg in tool_messages if msg.get('role') == 'tool']
+        
+        assert len(tool_result_messages) == 1
+        assert "Error executing tool simple_math_tool" in tool_result_messages[0]['content']
+        assert "unsupported operand type(s) for +: 'NoneType' and 'int'" in tool_result_messages[0]['content']
  
