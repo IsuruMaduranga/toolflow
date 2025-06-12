@@ -29,7 +29,6 @@ def create_openai_response_tool(response_format) -> Callable:
 
     return final_response_tool_internal
 
-
 def handle_openai_structured_response(response, response_format):
     """Handle OpenAI structured response parsing."""
     tool_calls = response.choices[0].message.tool_calls

@@ -13,12 +13,12 @@ import pytest
 import json
 from unittest.mock import Mock, AsyncMock, patch
 from toolflow import tool, from_openai, from_openai_async
-from .conftest import (
+from ..conftest import (
     failing_tool,
     simple_math_tool,
     async_math_tool,
-    create_mock_tool_call,
-    create_mock_response
+    create_mock_openai_tool_call as create_mock_tool_call,
+    create_mock_openai_response as create_mock_response
 )
 
 
@@ -102,7 +102,7 @@ class TestToolExecutionErrors:
     
     def test_division_by_zero_error_handling(self, sync_toolflow_client, mock_openai_client):
         """Test handling of division by zero errors with graceful error handling."""
-        from .conftest import divide_tool
+        from ..conftest import divide_tool
         
         tool_call = create_mock_tool_call("call_div", "divide_tool", {"a": 10, "b": 0})
         mock_response_1 = create_mock_response(tool_calls=[tool_call])
@@ -222,7 +222,7 @@ class TestInvalidArguments:
     
     def test_empty_tool_arguments(self, sync_toolflow_client, mock_openai_client):
         """Test handling of empty tool arguments."""
-        from .conftest import get_current_time_tool
+        from ..conftest import get_current_time_tool
         
         # Tool that expects no arguments but gets some
         tool_call = create_mock_tool_call("call_empty", "get_current_time_tool", {})

@@ -64,37 +64,19 @@ class CompletionsWrapper:
         
         return response.choices[0].message.content
 
-    def _prepare_handle_response_format(self, **kwargs):
-        tools = kwargs.get('tools', None)
-        response_format = kwargs.get('response_format', None)
-        stream = kwargs.get('stream', False)
-
-        if stream and response_format:
-            raise ValueError("response_format is not supported for streaming")
-            
-        # Dynamically add response_format to kwargs if it's a Pydantic model
-        if response_format:
-            validate_response_format(response_format)
-            
-            # Create a dynamic response tool
-            response_tool = create_openai_response_tool(response_format)
-            
-            # Add the response tool to the tools list
-            if tools is None:
-                tools = []
-            else:
-                tools = list(tools)  # Make a copy to avoid modifying the original
-            tools.append(response_tool)
-        
-            kwargs['tools'] = tools
-            kwargs['handle_structured_response_internal'] = True
-
-        return kwargs
-
     def create(
         self,
+        *,
         model: str,
         messages: List[Dict[str, Any]],
+        tools: List[Callable] = None,
+        stream: bool = False,
+        parallel_tool_execution: bool = False,
+        max_tool_calls: int = 10,
+        max_workers: int = 10,
+        graceful_error_handling: bool = True,
+        full_response: bool = None,
+        response_format = None,
         **kwargs
     ) -> Union[Any, Iterator[Any]]:
         """
@@ -112,16 +94,20 @@ class CompletionsWrapper:
         Returns:
             OpenAI ChatCompletion response, potentially with tool results, or Iterator if stream=True
         """
-        kwargs = self._prepare_handle_response_format(**kwargs)
+        all_kwargs = kwargs.copy()
+        # Use method-level full_response if provided, otherwise use client-level setting
+        full_response = full_response if full_response is not None else self._full_response
 
-        tools = kwargs.get('tools', None)
-        parallel_tool_execution = kwargs.get('parallel_tool_execution', False)
-        max_tool_calls = kwargs.get('max_tool_calls', 10)
-        max_workers = kwargs.get('max_workers', 10)
-        graceful_error_handling = kwargs.get('graceful_error_handling', True)
-        response_format = kwargs.get('response_format', None)
-        stream = kwargs.get('stream', False)
-        full_response = kwargs.get('full_response', self._full_response)
+        if response_format:
+            if stream:
+                raise ValueError("response_format is not supported for streaming")
+            
+            validate_response_format(response_format)
+            # Create a dynamic response tool
+            response_tool = create_openai_response_tool(response_format)
+
+            tools = [] if not tools else list(tools)  # Make a copy to avoid modifying the original
+            tools.append(response_tool)
 
         # Handle streaming
         if stream:
@@ -134,7 +120,7 @@ class CompletionsWrapper:
                 max_workers=max_workers,
                 graceful_error_handling=graceful_error_handling,
                 full_response=full_response,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'graceful_error_handling', 'full_response']}
+                **all_kwargs
             )
         
         response = None
@@ -148,15 +134,11 @@ class CompletionsWrapper:
                     raise Exception("Max tool calls reached without finding a solution")
                 
                 # Make the API call
-                excluded_kwargs = ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'graceful_error_handling', 'full_response']
-                if kwargs.get('handle_structured_response_internal', False):
-                    excluded_kwargs.extend(['response_format', 'handle_structured_response_internal'])
-                
                 response = self._original_completions.create(
                     model=model,
                     messages=current_messages,
                     tools=tool_schemas,
-                    **{k: v for k, v in kwargs.items() if k not in excluded_kwargs}
+                    **all_kwargs
                 )
 
                 tool_calls = response.choices[0].message.tool_calls
@@ -239,6 +221,7 @@ class CompletionsWrapper:
                         model=model,
                         messages=current_messages,
                         tools=tool_schemas,
+                        stream=True,
                         **kwargs
                     )
                 else:
@@ -246,6 +229,7 @@ class CompletionsWrapper:
                     stream = self._original_completions.create(
                         model=model,
                         messages=current_messages,
+                        stream=True,
                         **kwargs
                     )
                 

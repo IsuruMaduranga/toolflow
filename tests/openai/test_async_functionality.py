@@ -12,14 +12,14 @@ import asyncio
 import os
 from unittest.mock import Mock, AsyncMock
 from toolflow import tool, from_openai_async
-from .conftest import (
+from ..conftest import (
     async_math_tool,
     simple_math_tool,
     slow_async_tool,
     failing_tool,
-    create_mock_tool_call,
-    create_mock_response,
-    create_mock_streaming_chunk
+    create_mock_openai_tool_call as create_mock_tool_call,
+    create_mock_openai_response as create_mock_response,
+    create_mock_openai_streaming_chunk as create_mock_streaming_chunk
 )
 
 

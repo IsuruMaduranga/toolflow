@@ -13,14 +13,14 @@ import time
 import threading
 from unittest.mock import Mock, AsyncMock, patch
 from toolflow import tool, from_openai, from_openai_async
-from .conftest import (
+from ..conftest import (
     slow_tool,
     slow_async_tool,
     simple_math_tool,
     async_math_tool,
     failing_tool,
-    create_mock_tool_call,
-    create_mock_response
+    create_mock_openai_tool_call as create_mock_tool_call,
+    create_mock_openai_response as create_mock_response
 )
 
 

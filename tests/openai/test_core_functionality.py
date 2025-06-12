@@ -12,13 +12,13 @@ import os
 import openai
 from unittest.mock import Mock
 from toolflow import tool, from_openai
-from .conftest import (
+from ..conftest import (
     simple_math_tool, 
     divide_tool, 
     get_current_time_tool,
-    create_mock_tool_call,
-    create_mock_response,
-    create_mock_streaming_chunk
+    create_mock_openai_tool_call as create_mock_tool_call,
+    create_mock_openai_response as create_mock_response,
+    create_mock_openai_streaming_chunk as create_mock_streaming_chunk
 )
 
 
