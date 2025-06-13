@@ -443,7 +443,7 @@ class TestAnthropicParallelExecutionErrorHandling:
                 graceful_error_handling=False
             )
         
-        assert "Error executing tool failing_tool" in str(exc_info.value)
+        assert "Error in parallel tool execution" in str(exc_info.value)
         assert "This tool failed intentionally" in str(exc_info.value)
 
 

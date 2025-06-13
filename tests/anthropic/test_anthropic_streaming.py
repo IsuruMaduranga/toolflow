@@ -53,7 +53,9 @@ class TestAnthropicStreamingBasics:
         
         mock_anthropic_client.messages.create.return_value = iter(chunks)
         
-        stream = sync_anthropic_client.messages.create(
+        # Create client with full_response=False for text streaming
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        stream = client.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             messages=[{"role": "user", "content": "Say hello"}],
@@ -94,26 +96,38 @@ class TestAnthropicStreamingBasics:
 
     def test_streaming_with_tools_basic(self, sync_anthropic_client, mock_anthropic_client):
         """Test streaming with simple tool usage."""
-        # Mock streaming response with tool call
-        tool_call_mock = Mock(type="tool_use", id="call_123", name="simple_math_tool", input={"a": 5.0, "b": 3.0})
+        # Mock streaming response with tool call - properly structured for streaming
+        tool_call_start = Mock(type="tool_use", id="call_123", name="simple_math_tool")
         
         chunks = [
             create_mock_anthropic_streaming_chunk("message_start", message=Mock()),
             create_mock_anthropic_streaming_chunk("content_block_start", index=0, content_block=Mock(type="text")),
             create_mock_anthropic_streaming_chunk("content_block_delta", index=0, delta=Mock(type="text_delta", text="I'll calculate that for you.")),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=0),
-            create_mock_anthropic_streaming_chunk("content_block_start", index=1, content_block=tool_call_mock),
+            create_mock_anthropic_streaming_chunk("content_block_start", index=1, content_block=tool_call_start),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=1, delta=Mock(type="input_json_delta", partial_json='{"a": 5.0, "b": 3.0}')),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=1),
             create_mock_anthropic_streaming_chunk("message_stop")
         ]
         
-        # First call: streaming with tool call
-        mock_anthropic_client.messages.create.side_effect = [
-            iter(chunks),
-            create_mock_anthropic_response(content="The result is 8.0")  # Final response after tool execution
+        # Follow-up streaming chunks after tool execution
+        follow_up_chunks = [
+            create_mock_anthropic_streaming_chunk("message_start", message=Mock()),
+            create_mock_anthropic_streaming_chunk("content_block_start", index=0, content_block=Mock(type="text")),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=0, delta=Mock(type="text_delta", text="The result is 8.0")),
+            create_mock_anthropic_streaming_chunk("content_block_stop", index=0),
+            create_mock_anthropic_streaming_chunk("message_stop")
         ]
         
-        stream = sync_anthropic_client.messages.create(
+        # First call: streaming with tool call, Second call: streaming follow-up
+        mock_anthropic_client.messages.create.side_effect = [
+            iter(chunks),
+            iter(follow_up_chunks)  # Follow-up response should also be streaming
+        ]
+        
+        # Create client with full_response=False for text streaming
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        stream = client.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             messages=[{"role": "user", "content": "What is 5 + 3?"}],
@@ -139,8 +153,8 @@ class TestAnthropicStreamingWithTools:
     
     def test_streaming_multiple_tool_calls(self, sync_anthropic_client, mock_anthropic_client):
         """Test streaming with multiple tool calls."""
-        tool_call_1 = Mock(type="tool_use", id="call_1", name="simple_math_tool", input={"a": 10.0, "b": 5.0})
-        tool_call_2 = Mock(type="tool_use", id="call_2", name="calculator_tool", input={"operation": "multiply", "a": 3.0, "b": 4.0})
+        tool_call_1 = Mock(type="tool_use", id="call_1", name="simple_math_tool")
+        tool_call_2 = Mock(type="tool_use", id="call_2", name="calculator_tool")
         
         chunks = [
             create_mock_anthropic_streaming_chunk("message_start", message=Mock()),
@@ -148,18 +162,31 @@ class TestAnthropicStreamingWithTools:
             create_mock_anthropic_streaming_chunk("content_block_delta", index=0, delta=Mock(type="text_delta", text="Let me calculate both operations.")),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=0),
             create_mock_anthropic_streaming_chunk("content_block_start", index=1, content_block=tool_call_1),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=1, delta=Mock(type="input_json_delta", partial_json='{"a": 10.0, "b": 5.0}')),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=1),
             create_mock_anthropic_streaming_chunk("content_block_start", index=2, content_block=tool_call_2),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=2, delta=Mock(type="input_json_delta", partial_json='{"operation": "multiply", "a": 3.0, "b": 4.0}')),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=2),
+            create_mock_anthropic_streaming_chunk("message_stop")
+        ]
+        
+        # Follow-up streaming chunks after tool execution
+        follow_up_chunks = [
+            create_mock_anthropic_streaming_chunk("message_start", message=Mock()),
+            create_mock_anthropic_streaming_chunk("content_block_start", index=0, content_block=Mock(type="text")),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=0, delta=Mock(type="text_delta", text="Addition result: 15.0, Multiplication result: 12.0")),
+            create_mock_anthropic_streaming_chunk("content_block_stop", index=0),
             create_mock_anthropic_streaming_chunk("message_stop")
         ]
         
         mock_anthropic_client.messages.create.side_effect = [
             iter(chunks),
-            create_mock_anthropic_response(content="Addition result: 15.0, Multiplication result: 12.0")
+            iter(follow_up_chunks)
         ]
         
-        stream = sync_anthropic_client.messages.create(
+        # Create client with full_response=False for text streaming
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        stream = client.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             messages=[{"role": "user", "content": "Add 10+5 and multiply 3*4"}],
@@ -181,7 +208,7 @@ class TestAnthropicStreamingWithTools:
     def test_streaming_tool_error_handling(self, sync_anthropic_client, mock_anthropic_client):
         """Test error handling during streaming with tools."""
         # Create a tool call that will cause an error
-        tool_call_error = Mock(type="tool_use", id="call_error", name="simple_math_tool", input={"a": 10.0, "b": 0.0})  # This won't actually cause error in simple_math_tool, but we can mock the error
+        tool_call_error = Mock(type="tool_use", id="call_error", name="simple_math_tool")
         
         chunks = [
             create_mock_anthropic_streaming_chunk("message_start", message=Mock()),
@@ -189,17 +216,29 @@ class TestAnthropicStreamingWithTools:
             create_mock_anthropic_streaming_chunk("content_block_delta", index=0, delta=Mock(type="text_delta", text="Processing your request.")),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=0),
             create_mock_anthropic_streaming_chunk("content_block_start", index=1, content_block=tool_call_error),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=1, delta=Mock(type="input_json_delta", partial_json='{"a": 10.0, "b": 0.0}')),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=1),
+            create_mock_anthropic_streaming_chunk("message_stop")
+        ]
+        
+        # Follow-up streaming chunks after tool execution
+        follow_up_chunks = [
+            create_mock_anthropic_streaming_chunk("message_start", message=Mock()),
+            create_mock_anthropic_streaming_chunk("content_block_start", index=0, content_block=Mock(type="text")),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=0, delta=Mock(type="text_delta", text="The calculation completed successfully: 10.0")),
+            create_mock_anthropic_streaming_chunk("content_block_stop", index=0),
             create_mock_anthropic_streaming_chunk("message_stop")
         ]
         
         # Mock the streaming and follow-up response
         mock_anthropic_client.messages.create.side_effect = [
             iter(chunks),
-            create_mock_anthropic_response(content="The calculation completed successfully: 10.0")
+            iter(follow_up_chunks)
         ]
         
-        stream = sync_anthropic_client.messages.create(
+        # Create client with full_response=False for text streaming
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        stream = client.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             messages=[{"role": "user", "content": "Add 10 and 0"}],
@@ -269,7 +308,7 @@ class TestAnthropicAsyncStreaming:
         # Create async toolflow client
         async_client = toolflow.from_anthropic_async(mock_async_anthropic_client, full_response=False)
         
-        tool_call_mock = Mock(type="tool_use", id="call_async", name="weather_tool", input={"city": "Tokyo"})
+        tool_call_mock = Mock(type="tool_use", id="call_async", name="weather_tool")
         
         chunks = [
             create_mock_anthropic_streaming_chunk("message_start", message=Mock()),
@@ -277,7 +316,17 @@ class TestAnthropicAsyncStreaming:
             create_mock_anthropic_streaming_chunk("content_block_delta", index=0, delta=Mock(type="text_delta", text="Getting weather info.")),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=0),
             create_mock_anthropic_streaming_chunk("content_block_start", index=1, content_block=tool_call_mock),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=1, delta=Mock(type="input_json_delta", partial_json='{"city": "Tokyo"}')),
             create_mock_anthropic_streaming_chunk("content_block_stop", index=1),
+            create_mock_anthropic_streaming_chunk("message_stop")
+        ]
+        
+        # Follow-up streaming chunks after tool execution
+        follow_up_chunks = [
+            create_mock_anthropic_streaming_chunk("message_start", message=Mock()),
+            create_mock_anthropic_streaming_chunk("content_block_start", index=0, content_block=Mock(type="text")),
+            create_mock_anthropic_streaming_chunk("content_block_delta", index=0, delta=Mock(type="text_delta", text="Weather in Tokyo: Sunny, 72°F with light winds")),
+            create_mock_anthropic_streaming_chunk("content_block_stop", index=0),
             create_mock_anthropic_streaming_chunk("message_stop")
         ]
         
@@ -285,11 +334,14 @@ class TestAnthropicAsyncStreaming:
             for chunk in chunks:
                 yield chunk
         
+        async def async_iter_follow_up():
+            for chunk in follow_up_chunks:
+                yield chunk
+        
         # Mock streaming response and follow-up
-        final_response = create_mock_anthropic_response(content="Weather in Tokyo: Sunny, 72°F with light winds")
         mock_async_anthropic_client.messages.create.side_effect = [
             async_iter_chunks(),
-            final_response
+            async_iter_follow_up()
         ]
         
         stream = await async_client.messages.create(
@@ -323,7 +375,9 @@ class TestAnthropicStreamingErrorHandling:
         
         mock_anthropic_client.messages.create.return_value = failing_stream()
         
-        stream = sync_anthropic_client.messages.create(
+        # Create client with full_response=False for text streaming
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        stream = client.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             messages=[{"role": "user", "content": "Test interruption"}],
@@ -356,7 +410,9 @@ class TestAnthropicStreamingErrorHandling:
         
         mock_anthropic_client.messages.create.return_value = malformed_stream()
         
-        stream = sync_anthropic_client.messages.create(
+        # Create client with full_response=False for text streaming
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        stream = client.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             messages=[{"role": "user", "content": "Test malformed chunks"}],

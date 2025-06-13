@@ -27,7 +27,7 @@ def validate_and_prepare_anthropic_tools(tools: List[Callable]) -> tuple[Dict[st
             tool_schemas.append(anthropic_schema)
             tool_functions[openai_metadata['function']['name']] = tool
         else:
-            raise ValueError(f"Only decorated functions via @tool are supported. Got {type(tool)}")
+            raise ValueError("All tools must be decorated with @tool")
     
     return tool_functions, tool_schemas
 
@@ -48,7 +48,15 @@ def execute_anthropic_tools_sync(
         
         tool_function = tool_functions.get(tool_name, None)
         if not tool_function:
-            raise ValueError(f"Tool {tool_name} not found")
+            if graceful_error_handling:
+                return {
+                    "type": "tool_result",
+                    "tool_use_id": tool_call.id,
+                    "content": f"Tool {tool_name} not found",
+                    "is_error": True
+                }
+            else:
+                raise ValueError(f"Tool {tool_name} not found")
         
         try:
             # Anthropic provides input as a dict already
@@ -67,7 +75,7 @@ def execute_anthropic_tools_sync(
                     "is_error": True
                 }
             else:
-                raise Exception(f"Error executing tool {tool_name}: {e}")
+                raise
     
     # Sequential execution
     if not parallel_tool_execution or len(tool_calls) == 1:
@@ -113,7 +121,15 @@ async def execute_anthropic_tools_async(
         
         tool_function = tool_functions.get(tool_name, None)
         if not tool_function:
-            raise ValueError(f"Tool {tool_name} not found")
+            if graceful_error_handling:
+                return {
+                    "type": "tool_result",
+                    "tool_use_id": tool_call.id,
+                    "content": f"Tool {tool_name} not found",
+                    "is_error": True
+                }
+            else:
+                raise ValueError(f"Tool {tool_name} not found")
         
         try:
             # Check if the tool function is async
@@ -138,7 +154,7 @@ async def execute_anthropic_tools_async(
                     "is_error": True
                 }
             else:
-                raise Exception(f"Error executing tool {tool_name}: {e}")
+                raise
     
     # Sequential execution
     if not parallel_tool_execution or len(tool_calls) == 1:
@@ -186,7 +202,7 @@ async def execute_anthropic_tools_async(
                                     "is_error": True
                                 }
                             else:
-                                raise Exception(f"Error executing tool {tc.name}: {e}")
+                                raise
                     
                     futures.append(executor.submit(execute_sync_tool))
                 
@@ -222,7 +238,7 @@ async def execute_anthropic_tools_async(
                                 "is_error": True
                             }
                         else:
-                            raise Exception(f"Error executing tool {tc.name}: {e}")
+                            raise
                 
                 async_tasks.append(execute_async_tool())
             

@@ -738,10 +738,9 @@ class TestAnthropicAsyncStructuredOutput:
         )
         
         # Should return full response object with parsed attribute
-        assert hasattr(result, 'choices')
-        assert hasattr(result.choices[0].message, 'parsed')
+        assert hasattr(result, 'parsed')
         
-        parsed = result.choices[0].message.parsed
+        parsed = result.parsed
         assert isinstance(parsed, WeatherReport)
         assert parsed.location == "Denver"
         assert parsed.temperature == 55

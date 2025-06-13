@@ -63,7 +63,7 @@ class TestAnthropicToolExecutionErrors:
         mock_anthropic_client.messages.create.side_effect = [mock_response_1]
         
         # Should raise an exception when graceful error handling is disabled
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             sync_anthropic_client.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=100,
@@ -72,8 +72,7 @@ class TestAnthropicToolExecutionErrors:
                 graceful_error_handling=False
             )
         
-        # Verify the exception contains tool error information
-        assert "Error executing tool failing_tool" in str(exc_info.value)
+        # Verify the exception is the original exception from the tool
         assert "This tool failed intentionally" in str(exc_info.value)
     
     @pytest.mark.asyncio

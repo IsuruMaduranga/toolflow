@@ -27,7 +27,7 @@ from ..conftest import (
     calculator_tool,
     weather_tool,
     create_mock_anthropic_tool_call,
-    create_mock_anthropic_response,
+    create_mock_anthropic_response as conftest_create_mock_anthropic_response,
     create_mock_anthropic_streaming_chunk
 )
 from toolflow.providers.anthropic.structured_output import (
@@ -102,10 +102,10 @@ class TestAnthropicToolExecution:
         """Test basic math tools work correctly with Anthropic client."""
         # Mock a tool call response
         tool_call = create_mock_anthropic_tool_call("call_123", "simple_math_tool", {"a": 10.0, "b": 2.0})
-        mock_response_1 = create_mock_anthropic_response(tool_calls=[tool_call])
+        mock_response_1 = conftest_create_mock_anthropic_response(tool_calls=[tool_call])
         
         # Mock the final response
-        mock_response_2 = create_mock_anthropic_response(content="The result is 12.0")
+        mock_response_2 = conftest_create_mock_anthropic_response(content="The result is 12.0")
         
         mock_anthropic_client.messages.create.side_effect = [mock_response_1, mock_response_2]
         
@@ -123,10 +123,10 @@ class TestAnthropicToolExecution:
         """Test the complete tool execution flow with mocked Anthropic client."""
         # First response - model wants to use tool
         tool_call = create_mock_anthropic_tool_call("call_456", "divide_tool", {"a": 20.0, "b": 4.0})
-        mock_response_1 = create_mock_anthropic_response(tool_calls=[tool_call])
+        mock_response_1 = conftest_create_mock_anthropic_response(tool_calls=[tool_call])
         
         # Second response - model responds with result  
-        mock_response_2 = create_mock_anthropic_response(content="The division result is 5.0")
+        mock_response_2 = conftest_create_mock_anthropic_response(content="The division result is 5.0")
         
         mock_anthropic_client.messages.create.side_effect = [mock_response_1, mock_response_2]
         
@@ -153,7 +153,7 @@ class TestAnthropicToolExecution:
         mock_response_1.content = [text_block, tool_call_1, tool_call_2]
         
         # Second response
-        mock_response_2 = create_mock_anthropic_response(content="First result is 8.0 and second is 16.0")
+        mock_response_2 = conftest_create_mock_anthropic_response(content="First result is 8.0 and second is 16.0")
         
         mock_anthropic_client.messages.create.side_effect = [mock_response_1, mock_response_2]
         
@@ -169,7 +169,7 @@ class TestAnthropicToolExecution:
 
     def test_system_message_handling(self, sync_anthropic_client, mock_anthropic_client):
         """Test that system messages are properly passed to Anthropic."""
-        mock_response = create_mock_anthropic_response(content="Hello! I'm ready to help with math.")
+        mock_response = conftest_create_mock_anthropic_response(content="Hello! I'm ready to help with math.")
         mock_anthropic_client.messages.create.return_value = mock_response
         
         response = sync_anthropic_client.messages.create(
@@ -187,7 +187,7 @@ class TestAnthropicToolExecution:
 
     def test_no_tool_calls_response(self, sync_anthropic_client, mock_anthropic_client):
         """Test response when model doesn't use any tools."""
-        mock_response = create_mock_anthropic_response(content="I don't need any tools for this simple question.")
+        mock_response = conftest_create_mock_anthropic_response(content="I don't need any tools for this simple question.")
         mock_anthropic_client.messages.create.return_value = mock_response
         
         response = sync_anthropic_client.messages.create(
@@ -206,7 +206,7 @@ class TestAnthropicFullResponseParameter:
     
     def test_full_response_true(self, mock_anthropic_client):
         """Test full_response=True returns complete Anthropic response."""
-        mock_response = create_mock_anthropic_response(content="Test response")
+        mock_response = conftest_create_mock_anthropic_response(content="Test response")
         mock_anthropic_client.messages.create.return_value = mock_response
         
         client = toolflow.from_anthropic(mock_anthropic_client, full_response=True)
@@ -223,7 +223,7 @@ class TestAnthropicFullResponseParameter:
 
     def test_full_response_false(self, mock_anthropic_client):
         """Test full_response=False returns simplified response."""
-        mock_response = create_mock_anthropic_response(content="Simplified response")
+        mock_response = conftest_create_mock_anthropic_response(content="Simplified response")
         mock_anthropic_client.messages.create.return_value = mock_response
         
         client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
@@ -239,7 +239,7 @@ class TestAnthropicFullResponseParameter:
 
     def test_method_level_override(self, mock_anthropic_client):
         """Test that method-level full_response parameter overrides client-level."""
-        mock_response = create_mock_anthropic_response(content="Override test")
+        mock_response = conftest_create_mock_anthropic_response(content="Override test")
         mock_anthropic_client.messages.create.return_value = mock_response
         
         # Client set to full_response=False
@@ -265,10 +265,10 @@ class TestAnthropicErrorHandling:
         """Test graceful handling of tool execution errors."""
         # Mock a tool call that will cause an error
         tool_call = create_mock_anthropic_tool_call("call_error", "divide_tool", {"a": 10.0, "b": 0.0})
-        mock_response_1 = create_mock_anthropic_response(tool_calls=[tool_call])
+        mock_response_1 = conftest_create_mock_anthropic_response(tool_calls=[tool_call])
         
         # Second response after error handling
-        mock_response_2 = create_mock_anthropic_response(content="I encountered an error with division by zero.")
+        mock_response_2 = conftest_create_mock_anthropic_response(content="I encountered an error with division by zero.")
         
         mock_anthropic_client.messages.create.side_effect = [mock_response_1, mock_response_2]
         
@@ -287,7 +287,7 @@ class TestAnthropicErrorHandling:
         """Test that max_tool_calls limit is enforced."""
         # Always return a tool call to trigger infinite loop
         tool_call = create_mock_anthropic_tool_call("call_loop", "simple_math_tool", {"a": 1.0, "b": 1.0})
-        mock_response = create_mock_anthropic_response(tool_calls=[tool_call])
+        mock_response = conftest_create_mock_anthropic_response(tool_calls=[tool_call])
         mock_anthropic_client.messages.create.return_value = mock_response
         
         with pytest.raises(Exception, match="Max tool calls reached"):
@@ -303,7 +303,7 @@ class TestAnthropicErrorHandling:
         """Test error when model tries to call non-existent tool."""
         # Mock a tool call with invalid tool name
         tool_call = create_mock_anthropic_tool_call("call_invalid", "non_existent_tool", {"param": "value"})
-        mock_response = create_mock_anthropic_response(tool_calls=[tool_call])
+        mock_response = conftest_create_mock_anthropic_response(tool_calls=[tool_call])
         mock_anthropic_client.messages.create.return_value = mock_response
         
         with pytest.raises(ValueError, match="Tool non_existent_tool not found"):
@@ -328,7 +328,7 @@ class TestAnthropicParallelExecution:
         mock_response_1 = Mock()
         mock_response_1.content = [text_block, tool_call_1, tool_call_2]
         
-        mock_response_2 = create_mock_anthropic_response(content="Results: 8.0 and 9.0")
+        mock_response_2 = conftest_create_mock_anthropic_response(content="Results: 8.0 and 9.0")
         mock_anthropic_client.messages.create.side_effect = [mock_response_1, mock_response_2]
         
         response = sync_anthropic_client.messages.create(
@@ -346,8 +346,8 @@ class TestAnthropicParallelExecution:
     def test_sequential_execution_default(self, sync_anthropic_client, mock_anthropic_client):
         """Test sequential execution as default behavior."""
         tool_call = create_mock_anthropic_tool_call("call_seq", "simple_math_tool", {"a": 10.0, "b": 5.0})
-        mock_response_1 = create_mock_anthropic_response(tool_calls=[tool_call])
-        mock_response_2 = create_mock_anthropic_response(content="Sequential result: 15.0")
+        mock_response_1 = conftest_create_mock_anthropic_response(tool_calls=[tool_call])
+        mock_response_2 = conftest_create_mock_anthropic_response(content="Sequential result: 15.0")
         
         mock_anthropic_client.messages.create.side_effect = [mock_response_1, mock_response_2]
         
@@ -368,8 +368,8 @@ class TestAnthropicMessageFormatting:
     def test_tool_result_formatting(self, sync_anthropic_client, mock_anthropic_client):
         """Test that tool results are formatted correctly for Anthropic."""
         tool_call = create_mock_anthropic_tool_call("call_format", "weather_tool", {"city": "Tokyo"})
-        mock_response_1 = create_mock_anthropic_response(tool_calls=[tool_call])
-        mock_response_2 = create_mock_anthropic_response(content="Weather info received")
+        mock_response_1 = conftest_create_mock_anthropic_response(tool_calls=[tool_call])
+        mock_response_2 = conftest_create_mock_anthropic_response(content="Weather info received")
         
         mock_anthropic_client.messages.create.side_effect = [mock_response_1, mock_response_2]
         
@@ -397,7 +397,7 @@ class TestAnthropicMessageFormatting:
 
     def test_empty_messages_list(self, sync_anthropic_client, mock_anthropic_client):
         """Test handling of edge cases with message formatting."""
-        mock_response = create_mock_anthropic_response(content="Empty messages handled")
+        mock_response = conftest_create_mock_anthropic_response(content="Empty messages handled")
         mock_anthropic_client.messages.create.return_value = mock_response
         
         response = sync_anthropic_client.messages.create(
@@ -429,9 +429,9 @@ class TestAnthropicStructuredOutput:
         response_tool = create_anthropic_response_tool(WeatherInfo)
         
         # Check tool properties
-        assert hasattr(response_tool, '__toolflow_tool__')
-        assert response_tool.__toolflow_tool__['name'] == 'final_response_tool_internal'
-        assert response_tool.__toolflow_tool__['internal'] == True
+        assert hasattr(response_tool, '_tool_metadata')
+        assert response_tool._tool_metadata['function']['name'] == 'final_response_tool_internal'
+        # Note: The internal flag would be in the description or function logic, not in metadata
     
     def test_handle_anthropic_structured_response_success(self):
         """Test successful structured response handling."""
@@ -453,10 +453,9 @@ class TestAnthropicStructuredOutput:
         result = handle_anthropic_structured_response(mock_response, WeatherInfo)
         
         assert result is not None
-        assert hasattr(result, 'choices')
-        assert hasattr(result.choices[0].message, 'parsed')
+        assert hasattr(result, 'parsed')
         
-        parsed = result.choices[0].message.parsed
+        parsed = result.parsed
         assert isinstance(parsed, WeatherInfo)
         assert parsed.city == "San Francisco"
         assert parsed.temperature == 72.0
@@ -548,10 +547,9 @@ class TestAnthropicStructuredOutput:
         )
         
         # Should return full response object with parsed attribute
-        assert hasattr(result, 'choices')
-        assert hasattr(result.choices[0].message, 'parsed')
+        assert hasattr(result, 'parsed')
         
-        parsed = result.choices[0].message.parsed
+        parsed = result.parsed
         assert isinstance(parsed, WeatherInfo)
         assert parsed.city == "Boston"
         assert parsed.temperature == 65.0

@@ -142,7 +142,9 @@ class TestAnthropicStructuredOutputSyncWrapper:
         mock_response = create_mock_response(tool_calls=[tool_call])
         mock_anthropic_client.messages.create.return_value = mock_response
 
-        result = sync_anthropic_client.messages.create(
+        # Create client with full_response=False to get parsed model directly
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        result = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=100,
             messages=[{"role": "user", "content": "What's the weather?"}],
@@ -174,7 +176,9 @@ class TestAnthropicStructuredOutputSyncWrapper:
         mock_response = create_mock_response(tool_calls=[tool_call])
         mock_anthropic_client.messages.create.return_value = mock_response
 
-        result = sync_anthropic_client.messages.create(
+        # Create client with full_response=False to get parsed model directly
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        result = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=100,
             messages=[{"role": "user", "content": "What's the weather?"}],
@@ -225,7 +229,9 @@ class TestAnthropicStructuredOutputSyncWrapper:
         mock_response = create_mock_response(tool_calls=[tool_call])
         mock_anthropic_client.messages.create.return_value = mock_response
 
-        result = sync_anthropic_client.messages.create(
+        # Create client with full_response=False to get parsed model directly
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        result = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=200,
             messages=[{"role": "user", "content": "Analyze weather for multiple cities"}],
@@ -350,7 +356,9 @@ class TestAnthropicStructuredOutputAsyncWrapper:
         mock_response = create_mock_response(tool_calls=[tool_call])
         mock_async_anthropic_client.messages.create.return_value = mock_response
 
-        result = await async_anthropic_client.messages.create(
+        # Create client with full_response=False to get parsed model directly
+        client = toolflow.from_anthropic_async(mock_async_anthropic_client, full_response=False)
+        result = await client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=100,
             messages=[{"role": "user", "content": "What's the weather?"}],
@@ -382,7 +390,9 @@ class TestAnthropicStructuredOutputAsyncWrapper:
         mock_response = create_mock_response(tool_calls=[tool_call])
         mock_async_anthropic_client.messages.create.return_value = mock_response
 
-        result = await async_anthropic_client.messages.create(
+        # Create client with full_response=False to get parsed model directly
+        client = toolflow.from_anthropic_async(mock_async_anthropic_client, full_response=False)
+        result = await client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=100,
             messages=[{"role": "user", "content": "What's the weather?"}],
@@ -467,7 +477,9 @@ class TestAnthropicStructuredOutputIntegration:
         
         mock_anthropic_client.messages.create.side_effect = [calc_response, final_response]
 
-        result = sync_anthropic_client.messages.create(
+        # Create client with full_response=False to get parsed model directly
+        client = toolflow.from_anthropic(mock_anthropic_client, full_response=False)
+        result = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=200,
             messages=[{"role": "user", "content": "Calculate 10 + 5 and explain"}],
