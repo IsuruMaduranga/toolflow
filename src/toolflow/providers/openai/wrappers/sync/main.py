@@ -146,6 +146,9 @@ class CompletionsWrapper:
                 **all_kwargs
             )
 
+            if response.choices[0].finish_reason == "length":
+                raise Exception("Max tokens reached without finding a solution")
+
             tool_calls = response.choices[0].message.tool_calls
             if not tool_calls:
                 # No tool calls, we're done

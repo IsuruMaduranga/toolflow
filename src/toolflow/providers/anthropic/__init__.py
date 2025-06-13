@@ -3,7 +3,7 @@ Anthropic provider for toolflow.
 
 This module provides factory functions to create toolflow wrappers around Anthropic clients.
 """
-from .wrapper import AnthropicWrapper, AnthropicAsyncWrapper
+from .wrappers import AnthropicWrapper, AnthropicAsyncWrapper
 
 try:
     import anthropic
@@ -81,4 +81,4 @@ def from_anthropic_async(client, full_response: bool = False) -> "AnthropicAsync
     if not ANTHROPIC_AVAILABLE:
         raise ImportError("Anthropic library not installed. Install with: pip install anthropic")
     
-    return AnthropicAsyncWrapper(client, full_response) 
+    return AnthropicAsyncWrapper(client, full_response)
