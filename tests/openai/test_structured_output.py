@@ -109,7 +109,7 @@ class TestStructuredOutputUtils:
         mock_response.choices = [Mock()]
         mock_response.choices[0].message = Mock()
         mock_response.choices[0].message.tool_calls = None
-
+    
         result = handle_openai_structured_response(mock_response, WeatherReport)
         assert result is None
 

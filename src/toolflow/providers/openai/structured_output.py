@@ -4,7 +4,7 @@ OpenAI-specific structured output utilities.
 This module handles structured output parsing for OpenAI responses using Pydantic models.
 """
 import json
-from typing import Callable
+from typing import Callable, Any
 
 try:
     from pydantic import BaseModel
@@ -29,23 +29,23 @@ def create_openai_response_tool(response_format) -> Callable:
 
     return final_response_tool_internal
 
-def handle_openai_structured_response(response, response_format):
-    """Handle OpenAI structured response parsing."""
+def handle_openai_structured_response(response, response_format) -> Any|None:
+    """
+    Handle OpenAI structured response parsing.
+    Returns a tuple with the response and a boolean indicating if a structured response was found.
+    """
     tool_calls = response.choices[0].message.tool_calls
-    if tool_calls and tool_calls[0].function.name == "final_response_tool_internal":
-        # Parse the arguments and extract the actual response data
-        args = json.loads(tool_calls[0].function.arguments)
-        # The response data is nested under the 'response' key
-        response_data = args.get('response', args)
+    if not tool_calls:
+        return None
         
-        # Create the parsed Pydantic model
-        parsed_model = response_format.model_validate(response_data)
-        
-        # Modify the response to include both content and parsed
-        response.choices[0].message.content = json.dumps(response_data)
-        response.choices[0].message.parsed = parsed_model
-        
-        return response
+    for tool_call in tool_calls:
+        if tool_call.function.name == "final_response_tool_internal":
+            args = json.loads(tool_call.function.arguments)
+            response_data = args.get('response', args)
+            parsed_model = response_format.model_validate(response_data)
+            response.choices[0].message.content = json.dumps(response_data)
+            response.choices[0].message.parsed = parsed_model
+            return response
     return None
 
 

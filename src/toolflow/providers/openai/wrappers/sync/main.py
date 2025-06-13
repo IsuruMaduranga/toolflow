@@ -123,65 +123,52 @@ class CompletionsWrapper:
                 **all_kwargs
             )
         
-        response = None
-        if tools:
-            tool_functions, tool_schemas = validate_and_prepare_openai_tools(tools)
-            current_messages = messages.copy()
-            
-            # Tool execution loop
-            while True:
-                if max_tool_calls <= 0:
-                    raise Exception("Max tool calls reached without finding a solution")
-                
-                # Make the API call
-                response = self._original_completions.create(
-                    model=model,
-                    messages=current_messages,
-                    tools=tool_schemas,
-                    **all_kwargs
-                )
-
-                tool_calls = response.choices[0].message.tool_calls
-                if tool_calls:
-                    # Handle structured response
-                    if response_format:
-                        num_tool_calls = len(tool_calls)
-                        has_final_response_tool = any(tool_call.function.name == "final_response_tool_internal" for tool_call in tool_calls)
-
-                        if has_final_response_tool and num_tool_calls == 1:
-                            # Handle structured response cases
-                            response = handle_openai_structured_response(response, response_format)
-                            return self._extract_response_content(response, full_response, is_structured=True)
-                        elif not has_final_response_tool:
-                            # We execute rest of the tools
-                            pass
-                        else:
-                            # This is an error case
-                            raise Exception("Model called final_response_tool_internal along with other tools")
-                        
-                    # Execute regular tool calls
-                    current_messages.append(response.choices[0].message)
-                    execution_response = execute_openai_tools_sync(
-                        tool_functions,
-                        tool_calls,
-                        parallel_tool_execution, 
-                        max_workers=max_workers,
-                        graceful_error_handling=graceful_error_handling
-                    )
-                    max_tool_calls -= len(execution_response)
-                    current_messages.extend(execution_response)
-                else:
-                    # No tool calls, we're done
-                    return self._extract_response_content(response, full_response)
-
-        else: # No tools, just make the API call
+        if tools is None:
             response = self._original_completions.create(
                 model=model,
                 messages=messages,
-                **{k: v for k, v in kwargs.items() if k not in ['tools', 'parallel_tool_execution', 'max_tool_calls', 'max_workers', 'graceful_error_handling', 'full_response', 'is_structured_parse']}
+                **all_kwargs
             )
+            return self._extract_response_content(response, full_response)
         
-        return self._extract_response_content(response, full_response)
+        # If tools are provided, handle tool execution
+        tool_call_count = 0
+        tool_functions, tool_schemas = validate_and_prepare_openai_tools(tools)
+        current_messages = messages.copy()
+        
+        # Tool execution loop
+        while tool_call_count < max_tool_calls:
+            # Make the API call
+            response = self._original_completions.create(
+                model=model,
+                messages=current_messages,
+                tools=tool_schemas,
+                **all_kwargs
+            )
+
+            tool_calls = response.choices[0].message.tool_calls
+            if not tool_calls:
+                # No tool calls, we're done
+                return self._extract_response_content(response, full_response)
+            
+            # Handle structured response
+            structured_response = handle_openai_structured_response(response, response_format)
+            if structured_response:
+                return self._extract_response_content(structured_response, full_response, is_structured=True)
+            
+            # Else we execute rest of the tools
+            current_messages.append(response.choices[0].message)
+            tool_results = execute_openai_tools_sync(
+                tool_functions,
+                tool_calls,
+                parallel_tool_execution, 
+                max_workers=max_workers,
+                graceful_error_handling=graceful_error_handling
+            )
+            tool_call_count += len(tool_results)  
+            current_messages.extend(tool_results)
+
+        raise Exception("Max tool calls reached without finding a solution")
 
     def _create_streaming(
         self,
