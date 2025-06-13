@@ -207,145 +207,94 @@ class MessagesWrapper:
         Create a streaming message completion with tool support.
         
         This method handles streaming responses while still supporting tool calls.
-        When tool calls are detected in the stream, it pauses streaming, executes tools,
-        and continues with the follow-up response.
+        When tool calls are detected in the stream, they are accumulated, executed,
+        and then the conversation continues with a new streaming call.
         """
         return_full_response = full_response if full_response is not None else self._full_response
         
-        if tools is None:
-            # No tools, direct streaming
-            request_params = {
-                "model": model,
-                "messages": messages,
-                "stream": True,
-                **kwargs
-            }
+        def streaming_generator():
+            current_messages = messages.copy()
+            remaining_tool_calls = max_tool_calls
             
-            stream = self._original_messages.create(**request_params)
-            
-            if return_full_response:
-                # Return chunks as-is
-                for chunk in stream:
-                    yield chunk
-            else:
-                # Extract text content from chunks
-                for chunk in stream:
-                    if hasattr(chunk, 'type') and chunk.type == 'content_block_delta':
-                        if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
-                            yield chunk.delta.text
-            return
-        
-        # Tools provided, handle streaming with tool execution
-        tool_functions, tool_schemas = validate_and_prepare_anthropic_tools(tools)
-        current_messages = messages.copy()
-        tool_call_count = 0
-        
-        while tool_call_count < max_tool_calls:
-            # Make streaming API call
-            request_params = {
-                "model": model,
-                "messages": current_messages,
-                "tools": tool_schemas,
-                "stream": True,
-                **kwargs
-            }
-            
-            stream = self._original_messages.create(**request_params)
-            
-            # Accumulate streaming content
-            message_content = []
-            accumulated_tool_calls = []
-            accumulated_json_strings = {}
-            
-            for chunk in stream:
-                if return_full_response:
-                    yield chunk
+            while True:
+                if remaining_tool_calls <= 0:
+                    raise Exception(f"Max tool calls reached ({max_tool_calls})")
                 
-                # Accumulate content and detect tool calls
-                has_tool_calls = accumulate_anthropic_streaming_content(
-                    chunk=chunk,
-                    message_content=message_content,
-                    accumulated_tool_calls=accumulated_tool_calls,
-                    accumulated_json_strings=accumulated_json_strings,
-                    graceful_error_handling=graceful_error_handling
-                )
+                if tools:
+                    tool_functions, tool_schemas = validate_and_prepare_anthropic_tools(tools)
+                    
+                    # Make streaming API call with tools
+                    stream = self._original_messages.create(
+                        model=model,
+                        messages=current_messages,
+                        tools=tool_schemas,
+                        stream=True,
+                        **kwargs
+                    )
+                else:
+                    # Make streaming API call without tools
+                    stream = self._original_messages.create(
+                        model=model,
+                        messages=current_messages,
+                        stream=True,
+                        **kwargs
+                    )
                 
-                # Yield text content if not full response
-                if not return_full_response:
-                    if hasattr(chunk, 'type') and chunk.type == 'content_block_delta':
-                        if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
-                            yield chunk.delta.text
-            
-            if not accumulated_tool_calls:
-                # No tool calls, streaming complete
-                return
-            
-            # Execute tools
-            tool_results = execute_anthropic_tools_sync(
-                tool_functions=tool_functions,
-                tool_calls=accumulated_tool_calls,
-                parallel_tool_execution=parallel_tool_execution,
-                max_workers=max_workers,
-                graceful_error_handling=graceful_error_handling
-            )
-            
-            # Add assistant message with tool calls
-            assistant_message = {
-                "role": "assistant",
-                "content": message_content
-            }
-            current_messages.append(assistant_message)
-            
-            # Add tool results
-            tool_result_message = format_anthropic_tool_calls_for_messages(tool_results)
-            current_messages.append(tool_result_message)
-            
-            tool_call_count += 1
-            
-            # Continue with next iteration for follow-up response
-            # Make non-streaming call for follow-up
-            request_params = {
-                "model": model,
-                "messages": current_messages,
-                "tools": tool_schemas,
-                **kwargs
-            }
-            
-            follow_up_response = self._original_messages.create(**request_params)
-            
-            # Yield follow-up response content
-            if hasattr(follow_up_response, 'content'):
-                for content_block in follow_up_response.content:
-                    if hasattr(content_block, 'text'):
-                        if return_full_response:
-                            # Create a mock chunk for consistency
-                            mock_chunk = type('MockChunk', (), {
-                                'type': 'content_block_delta',
-                                'delta': type('MockDelta', (), {'text': content_block.text})()
-                            })()
-                            yield mock_chunk
-                        else:
-                            yield content_block.text
-            
-            # Check if follow-up has more tool calls
-            follow_up_tool_calls = []
-            if hasattr(follow_up_response, 'content'):
-                for content_block in follow_up_response.content:
-                    if hasattr(content_block, 'type') and content_block.type == 'tool_use':
-                        follow_up_tool_calls.append(content_block)
-            
-            if not follow_up_tool_calls:
-                # No more tool calls, streaming complete
-                return
-            
-            # Update for next iteration
-            current_messages.append({
-                "role": "assistant",
-                "content": follow_up_response.content
-            })
+                # Accumulate streaming content
+                message_content = []
+                accumulated_tool_calls = []
+                accumulated_json_strings = {}
+                
+                for chunk in stream:
+                    if return_full_response:
+                        yield chunk
+                    
+                    # Accumulate content and detect tool calls
+                    has_tool_calls = accumulate_anthropic_streaming_content(
+                        chunk=chunk,
+                        message_content=message_content,
+                        accumulated_tool_calls=accumulated_tool_calls,
+                        accumulated_json_strings=accumulated_json_strings,
+                        graceful_error_handling=graceful_error_handling
+                    )
+                    
+                    # Yield text content if not full response
+                    if not return_full_response:
+                        if hasattr(chunk, 'type') and chunk.type == 'content_block_delta':
+                            if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                                yield chunk.delta.text
+                
+                # Check if we have tool calls to execute
+                if accumulated_tool_calls and tools:
+                    # Execute tools
+                    tool_results = execute_anthropic_tools_sync(
+                        tool_functions=tool_functions,
+                        tool_calls=accumulated_tool_calls,
+                        parallel_tool_execution=parallel_tool_execution,
+                        max_workers=max_workers,
+                        graceful_error_handling=graceful_error_handling
+                    )
+                    
+                    remaining_tool_calls -= len(tool_results)
+                    
+                    # Add assistant message with tool calls
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": message_content
+                    }
+                    current_messages.append(assistant_message)
+                    
+                    # Add tool results
+                    tool_result_message = format_anthropic_tool_calls_for_messages(tool_results)
+                    current_messages.append(tool_result_message)
+                    
+                    # Continue the loop to get the next response
+                    continue
+                
+                # No tool calls, we're done
+                break
         
-        # Max tool calls reached
-        raise Exception(f"Max tool calls reached ({max_tool_calls})")
+        return streaming_generator()
 
     def __getattr__(self, name):
         """Delegate all other attributes to the original messages."""

@@ -1,13 +1,13 @@
 import asyncio
 import toolflow
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, Anthropic
 
 @toolflow.tool
 def get_weather(location: str) -> str:
     """Get the current weather in a given location"""
     return f"Weather in {location}: Sunny, 72°F"
 
-client = toolflow.from_anthropic_async(AsyncAnthropic())
+client = toolflow.from_anthropic_async(Anthropic())
 
 async def main():
 
