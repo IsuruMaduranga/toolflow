@@ -12,7 +12,7 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 
-def from_openai(client, full_response: bool = False) -> "OpenAIWrapper":
+def from_openai(client: "openai.OpenAI", full_response: bool = False) -> "OpenAIWrapper":
     """
     Create a toolflow wrapper around an existing OpenAI client.
     
@@ -43,10 +43,30 @@ def from_openai(client, full_response: bool = False) -> "OpenAIWrapper":
     if not OPENAI_AVAILABLE:
         raise ImportError("OpenAI library not installed. Install with: pip install openai")
     
+    # Validate client type
+    if not isinstance(client, openai.OpenAI):
+        if hasattr(client, '__class__'):
+            client_type = client.__class__.__name__
+            if client_type == "AsyncOpenAI":
+                raise TypeError(
+                    f"Expected synchronous OpenAI client, got AsyncOpenAI. "
+                    f"Use toolflow.from_openai_async() for AsyncOpenAI clients."
+                )
+            else:
+                raise TypeError(
+                    f"Expected openai.OpenAI client, got {client_type}. "
+                    f"Please pass a valid OpenAI() client instance."
+                )
+        else:
+            raise TypeError(
+                f"Expected openai.OpenAI client, got {type(client)}. "
+                f"Please pass a valid OpenAI() client instance."
+            )
+    
     return OpenAIWrapper(client, full_response)
 
 
-def from_openai_async(client, full_response: bool = False) -> "OpenAIAsyncWrapper":
+def from_openai_async(client: "openai.AsyncOpenAI", full_response: bool = False) -> "OpenAIAsyncWrapper":
     """
     Create a toolflow wrapper around an existing OpenAI async client.
     
@@ -76,5 +96,25 @@ def from_openai_async(client, full_response: bool = False) -> "OpenAIAsyncWrappe
     """
     if not OPENAI_AVAILABLE:
         raise ImportError("OpenAI library not installed. Install with: pip install openai")
+    
+    # Validate client type
+    if not isinstance(client, openai.AsyncOpenAI):
+        if hasattr(client, '__class__'):
+            client_type = client.__class__.__name__
+            if client_type == "OpenAI":
+                raise TypeError(
+                    f"Expected asynchronous AsyncOpenAI client, got OpenAI. "
+                    f"Use toolflow.from_openai() for synchronous OpenAI clients."
+                )
+            else:
+                raise TypeError(
+                    f"Expected openai.AsyncOpenAI client, got {client_type}. "
+                    f"Please pass a valid AsyncOpenAI() client instance."
+                )
+        else:
+            raise TypeError(
+                f"Expected openai.AsyncOpenAI client, got {type(client)}. "
+                f"Please pass a valid AsyncOpenAI() client instance."
+            )
     
     return OpenAIAsyncWrapper(client, full_response)
