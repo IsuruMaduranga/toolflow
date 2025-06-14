@@ -274,9 +274,9 @@ class TestFullResponseParameter:
         client = from_openai(mock_openai_client, full_response=False)
         
         mock_response = create_mock_response(content="Beta test content")
-        mock_openai_client.beta.chat.completions.create.return_value = mock_response
+        mock_openai_client.beta.chat.completions.parse.return_value = mock_response
         
-        response = client.beta.chat.completions.create(
+        response = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Hello"}]
         )

@@ -269,22 +269,22 @@ class TestStructuredOutputBetaWrapper:
                 assert params.get('additionalProperties') is False
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_beta_create_with_tools(self, toolflow_client, mock_openai_client, math_tool):
-        """Test beta create method with tools."""
+    def test_beta_parse_with_tools(self, toolflow_client, mock_openai_client, math_tool):
+        """Test beta parse method with tools."""
         mock_response = Mock()
         mock_response.choices = [Mock()]
         mock_response.choices[0].message = Mock()
         mock_response.choices[0].message.tool_calls = None
-        mock_openai_client.beta.chat.completions.create.return_value = mock_response
+        mock_openai_client.beta.chat.completions.parse.return_value = mock_response
 
-        result = toolflow_client.beta.chat.completions.create(
+        result = toolflow_client.beta.chat.completions.parse(
             model="gpt-4",
             messages=[{"role": "user", "content": "Calculate something"}],
             tools=[math_tool]
         )
 
         # Verify strict validation was used
-        mock_openai_client.beta.chat.completions.create.assert_called_once()
+        mock_openai_client.beta.chat.completions.parse.assert_called_once()
 
 
 class TestStructuredOutputErrorHandling:

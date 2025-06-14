@@ -387,9 +387,9 @@ class TestAsyncFullResponseParameter:
         client = from_openai_async(mock_async_openai_client, full_response=False)
         
         mock_response = create_mock_response(content="Async beta test content")
-        mock_async_openai_client.beta.chat.completions.create.return_value = mock_response
+        mock_async_openai_client.beta.chat.completions.parse.return_value = mock_response
         
-        response = await client.beta.chat.completions.create(
+        response = await client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Hello"}]
         )

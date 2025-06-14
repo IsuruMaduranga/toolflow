@@ -380,7 +380,6 @@ class CompletionsWrapper:
                         model=model,
                         messages=current_messages,
                         tools=tool_schemas,
-                        stream=True,
                         **kwargs
                     )
                 else:
@@ -388,7 +387,6 @@ class CompletionsWrapper:
                     stream = self._original_completions.create(
                         model=model,
                         messages=current_messages,
-                        stream=True,
                         **kwargs
                     )
                 

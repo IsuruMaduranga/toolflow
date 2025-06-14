@@ -315,8 +315,8 @@ anthropic_parsed = anthropic_client.messages.create(
 print("OpenAI:", openai_parsed)      # Direct FibonacciResponse object
 print("Anthropic:", anthropic_parsed) # Direct FibonacciResponse object
 
-# OpenAI also supports the Beta API
-beta_parsed_data = openai_client.beta.chat.completions.create(
+# OpenAI also supports the Beta API for structured parsing
+beta_parsed_data = openai_client.beta.chat.completions.parse(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
     tools=[fibonacci],
