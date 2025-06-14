@@ -26,7 +26,7 @@ from ...tool_execution import (
     execute_anthropic_tools_async,
     format_anthropic_tool_calls_for_messages
 )
-from ...streaming import accumulate_anthropic_streaming_content
+from ...streaming import accumulate_anthropic_streaming_content, should_yield_chunk
 from ...structured_output import (
     create_anthropic_response_tool,
     handle_anthropic_structured_response,
@@ -340,13 +340,14 @@ class MessagesAsyncWrapper:
                 message_content = []
                 accumulated_tool_calls = []
                 accumulated_json_strings = {}
+                block_types = {}  # Track block types for proper thinking tag handling
                 
                 async for chunk in stream:
                     if return_full_response:
                         yield chunk
                     
                     # Accumulate content and detect tool calls
-                    has_tool_calls = accumulate_anthropic_streaming_content(
+                    accumulate_anthropic_streaming_content(
                         chunk=chunk,
                         message_content=message_content,
                         accumulated_tool_calls=accumulated_tool_calls,
@@ -356,12 +357,9 @@ class MessagesAsyncWrapper:
                     
                     # Yield text content if not full response
                     if not return_full_response:
-                        if hasattr(chunk, 'type') and chunk.type == 'content_block_delta':
-                            if (hasattr(chunk, 'delta') and 
-                                hasattr(chunk.delta, 'type') and 
-                                chunk.delta.type == 'text_delta' and
-                                hasattr(chunk.delta, 'text')):
-                                yield chunk.delta.text
+                        should_yield, content = should_yield_chunk(chunk, return_full_response, block_types)
+                        if should_yield and content:
+                            yield content
                 
                 # Check if we have tool calls to execute
                 if accumulated_tool_calls and tools:

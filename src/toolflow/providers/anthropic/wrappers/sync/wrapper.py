@@ -25,7 +25,7 @@ from ...tool_execution import (
     execute_anthropic_tools_sync,
     format_anthropic_tool_calls_for_messages
 )
-from ...streaming import accumulate_anthropic_streaming_content
+from ...streaming import accumulate_anthropic_streaming_content, should_yield_chunk
 from ...structured_output import (
     create_anthropic_response_tool,
     handle_anthropic_structured_response,
@@ -64,8 +64,11 @@ class MessagesWrapper:
         
         text_content = ""
         for content_block in response.content:
-            if hasattr(content_block, 'text'):
-                text_content += content_block.text
+            if hasattr(content_block, 'type'):
+                if content_block.type == 'text':
+                    text_content += content_block.text
+                elif content_block.type == 'thinking':
+                    text_content += f"\n<THINKING>\n{content_block.thinking}\n</THINKING>\n\n"
         return text_content
 
     def create(
@@ -160,6 +163,14 @@ class MessagesWrapper:
         # Build kwargs dict for Anthropic API call, excluding toolflow-specific params
         anthropic_kwargs = {}
         
+        # Check for interleaved thinking beta header
+        if extra_headers and 'anthropic-beta' in extra_headers:
+            # Check if interleaved thinking is requested
+            beta_header = extra_headers['anthropic-beta']
+            if isinstance(beta_header, str) and 'interleaved-thinking' in beta_header:
+                # Interleaved thinking is supported, pass through the header
+                pass
+        
         # Add all Anthropic parameters that are not NOT_GIVEN
         if metadata is not NOT_GIVEN:
             anthropic_kwargs['metadata'] = metadata
@@ -241,6 +252,7 @@ class MessagesWrapper:
         tool_functions, tool_schemas = validate_and_prepare_anthropic_tools(toolflow_tools)
         current_messages = list(messages)
         
+        final_response = ""
         while tool_call_count < max_tool_calls:
             
             # Make API call 
@@ -251,6 +263,15 @@ class MessagesWrapper:
                 tools=tool_schemas,
                 **anthropic_kwargs
             )
+
+            # Handle response extraction based on full_response setting
+            if effective_full_response:
+                # For full_response mode, return the response directly when tools complete
+                extracted_content = response
+            else:
+                # For non-full response mode, accumulate text content
+                extracted_content = self._extract_response_content(response, effective_full_response)
+                final_response = final_response + extracted_content
 
             if response.stop_reason == "max_tokens":
                 raise Exception("Max tokens reached without finding a solution")
@@ -275,8 +296,11 @@ class MessagesWrapper:
                     return self._extract_response_content(structured_response, effective_full_response, is_structured=True)
             
             if not tool_calls:
-                # No tool calls, return final response
-                return self._extract_response_content(response, effective_full_response)
+                # No tool calls, return appropriate response
+                if effective_full_response:
+                    return extracted_content
+                else:
+                    return final_response
             
             # Execute tools
             tool_results = execute_anthropic_tools_sync(
@@ -360,28 +384,25 @@ class MessagesWrapper:
                 message_content = []
                 accumulated_tool_calls = []
                 accumulated_json_strings = {}
+                block_types = {}  # Track block types for proper thinking tag handling
                 
                 for chunk in stream:
                     if return_full_response:
                         yield chunk
-                    
-                    # Accumulate content and detect tool calls
-                    has_tool_calls = accumulate_anthropic_streaming_content(
-                        chunk=chunk,
-                        message_content=message_content,
-                        accumulated_tool_calls=accumulated_tool_calls,
-                        accumulated_json_strings=accumulated_json_strings,
-                        graceful_error_handling=graceful_error_handling
-                    )
-                    
-                    # Yield text content if not full response
-                    if not return_full_response:
-                        if hasattr(chunk, 'type') and chunk.type == 'content_block_delta':
-                            if (hasattr(chunk, 'delta') and 
-                                hasattr(chunk.delta, 'type') and 
-                                chunk.delta.type == 'text_delta' and
-                                hasattr(chunk.delta, 'text')):
-                                yield chunk.delta.text
+                    else:
+                        # Accumulate content and detect tool calls
+                        accumulate_anthropic_streaming_content(
+                            chunk=chunk,
+                            message_content=message_content,
+                            accumulated_tool_calls=accumulated_tool_calls,
+                            accumulated_json_strings=accumulated_json_strings,  
+                            graceful_error_handling=graceful_error_handling
+                        )
+                        
+                        # Yield text content if not full response
+                        should_yield, content = should_yield_chunk(chunk, return_full_response, block_types)
+                        if should_yield and content:
+                            yield content
                 
                 # Check if we have tool calls to execute
                 if accumulated_tool_calls and tools:

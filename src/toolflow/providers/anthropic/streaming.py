@@ -39,6 +39,13 @@ def accumulate_anthropic_streaming_content(
                 "type": "text",
                 "text": ""
             })
+
+        elif content_block.type == "thinking":
+            message_content.append({
+                "type": "thinking",
+                "thinking": "",
+                "signature": ""  # Will be filled when signature_delta arrives
+            })
         elif content_block.type == "tool_use":
             message_content.append({
                 "type": "tool_use",
@@ -56,12 +63,24 @@ def accumulate_anthropic_streaming_content(
             # Update text content
             if (content_index < len(message_content) and 
                 message_content[content_index]["type"] == "text"):
-                message_content[content_index]["text"] += delta.text
+                message_content[content_index]["text"] += str(delta.text)
+        
+        elif delta.type == "thinking_delta":
+            # Update thinking content
+            if (content_index < len(message_content) and 
+                message_content[content_index]["type"] == "thinking"):
+                message_content[content_index]["thinking"] += str(delta.thinking)
+        
+        elif delta.type == "signature_delta":
+            # Update thinking signature
+            if (content_index < len(message_content) and 
+                message_content[content_index]["type"] == "thinking"):
+                message_content[content_index]["signature"] += str(delta.signature)
         
         elif delta.type == "input_json_delta":
             # Accumulate JSON for tool inputs
             if content_index in accumulated_json_strings:
-                accumulated_json_strings[content_index] += delta.partial_json
+                accumulated_json_strings[content_index] += str(delta.partial_json)
     
     elif chunk.type == "content_block_stop":
         content_index = chunk.index
@@ -101,20 +120,67 @@ def accumulate_anthropic_streaming_content(
     return tool_calls_completed
 
 
-def should_yield_chunk(chunk, full_response: bool) -> tuple[bool, str]:
+def should_yield_chunk(chunk, return_full_response: bool, block_types: dict = None):
     """
-    Determine if a chunk should be yielded and what content to yield.
+    Determine if a chunk should be yielded and extract its content.
     
+    Args:
+        chunk: The streaming chunk from Anthropic
+        return_full_response: Whether we're returning full response objects
+        block_types: Dict to track block types by index (optional)
+        
     Returns:
-        tuple: (should_yield, content_to_yield)
+        Tuple of (should_yield: bool, content: str)
     """
-    if full_response:
+    if return_full_response:
         return True, chunk
     
-    # Only yield text content if available
-    if (hasattr(chunk, 'delta') and 
-        hasattr(chunk.delta, 'text') and 
-        chunk.delta.text):
-        return True, chunk.delta.text
+    # Initialize block_types if not provided
+    if block_types is None:
+        block_types = {}
     
-    return False, None 
+    # Handle different types of Anthropic streaming events
+    if hasattr(chunk, 'type'):
+        if chunk.type == 'content_block_delta':
+            if hasattr(chunk, 'delta'):
+                # Handle thinking content
+                if hasattr(chunk.delta, 'type') and chunk.delta.type == 'thinking_delta':
+                    if hasattr(chunk.delta, 'thinking'):
+                        return True, str(chunk.delta.thinking)
+                
+                # Handle text content
+                elif hasattr(chunk.delta, 'type') and chunk.delta.type == 'text_delta':
+                    if hasattr(chunk.delta, 'text'):
+                        return True, str(chunk.delta.text)
+        
+        elif chunk.type == 'content_block_start':
+            if hasattr(chunk, 'content_block') and hasattr(chunk, 'index'):
+                # Track block type by index
+                block_types[chunk.index] = chunk.content_block.type
+                
+                # Handle thinking block start
+                if chunk.content_block.type == 'thinking':
+                    return True, "\n<THINKING>\n"
+                
+                # Handle text block start  
+                elif chunk.content_block.type == 'text':
+                    return True, ""  # No indicator for text start
+        
+        elif chunk.type == 'content_block_stop':
+            if hasattr(chunk, 'index'):
+                # Check if this was a thinking block that's ending
+                block_type = block_types.get(chunk.index)
+                if block_type == 'thinking':
+                    # Clean up the tracking
+                    block_types.pop(chunk.index, None)
+                    return True, "\n</THINKING>\n\n"
+                elif block_type == 'text':
+                    # Clean up the tracking
+                    block_types.pop(chunk.index, None)
+                    return True, "\n"  # Just add newline for text blocks
+    
+    # Fallback for other chunk types
+    if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+        return True, str(chunk.delta.text)
+    
+    return False, "" 
