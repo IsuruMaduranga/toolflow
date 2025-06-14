@@ -3,7 +3,44 @@ Main synchronous OpenAI wrapper classes.
 
 This module contains the core synchronous wrapper classes for OpenAI clients.
 """
-from typing import Any, Dict, List, Callable, Iterator, Union
+from typing import Any, Dict, List, Callable, Iterator, Union, Optional, Iterable, Literal
+
+# Import OpenAI types for proper parameter typing
+try:
+    from openai.types.chat import (
+        ChatCompletionMessageParam,
+        ChatCompletionToolParam,
+        ChatCompletionAudioParam,
+        ChatCompletionStreamOptionsParam,
+        ChatCompletionPredictionContentParam,
+        ChatCompletionToolChoiceOptionParam,
+    )
+    from openai.types.shared.chat_model import ChatModel
+    from openai.types.shared_params.metadata import Metadata
+    from openai.types.shared.reasoning_effort import ReasoningEffort
+    from openai.types.chat import completion_create_params
+    from openai._types import NOT_GIVEN, NotGiven
+    OPENAI_TYPES_AVAILABLE = True
+except ImportError:
+    # Fallback types for when OpenAI is not installed
+    ChatCompletionMessageParam = Dict[str, Any]
+    ChatModel = str
+    ChatCompletionAudioParam = Dict[str, Any]
+    ChatCompletionStreamOptionsParam = Dict[str, Any]
+    ChatCompletionPredictionContentParam = Dict[str, Any]
+    ChatCompletionToolChoiceOptionParam = Union[str, Dict[str, Any]]
+    ChatCompletionToolParam = Dict[str, Any]
+    Metadata = Dict[str, str]
+    ReasoningEffort = str
+    completion_create_params = type('completion_create_params', (), {
+        'FunctionCall': Union[str, Dict[str, Any]],
+        'Function': Dict[str, Any],
+        'ResponseFormat': Union[str, Dict[str, Any]],
+        'WebSearchOptions': Dict[str, Any]
+    })()
+    NOT_GIVEN = object()
+    NotGiven = type(NOT_GIVEN)
+    OPENAI_TYPES_AVAILABLE = False
 
 from ...tool_execution import (
     validate_and_prepare_openai_tools,
@@ -19,6 +56,7 @@ from ...structured_output import (
     handle_openai_structured_response,
     validate_response_format
 )
+
 class OpenAIWrapper:
     """Wrapper around OpenAI client that supports tool-py functions."""
     
@@ -33,6 +71,7 @@ class OpenAIWrapper:
         """Delegate all other attributes to the original client."""
         return getattr(self._client, name)
 
+
 class ChatWrapper:
     """Wrapper around OpenAI chat that handles toolflow functions."""
     
@@ -40,7 +79,7 @@ class ChatWrapper:
         self._client = client
         self._full_response = full_response
         self.completions = CompletionsWrapper(client, full_response)
-    
+
     def __getattr__(self, name):
         """Delegate all other attributes to the original chat."""
         return getattr(self._client.chat, name)
@@ -67,74 +106,204 @@ class CompletionsWrapper:
     def create(
         self,
         *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: List[Callable] = None,
-        stream: bool = False,
+        # Required parameters
+        messages: Iterable[ChatCompletionMessageParam],
+        model: Union[str, ChatModel],
+        
+        # OpenAI API parameters (in alphabetical order for consistency)
+        audio: Optional[ChatCompletionAudioParam] | NotGiven = NOT_GIVEN,
+        frequency_penalty: Optional[float] | NotGiven = NOT_GIVEN,
+        function_call: completion_create_params.FunctionCall | NotGiven = NOT_GIVEN,
+        functions: Iterable[completion_create_params.Function] | NotGiven = NOT_GIVEN,
+        logit_bias: Optional[Dict[str, int]] | NotGiven = NOT_GIVEN,
+        logprobs: Optional[bool] | NotGiven = NOT_GIVEN,
+        max_completion_tokens: Optional[int] | NotGiven = NOT_GIVEN,
+        max_tokens: Optional[int] | NotGiven = NOT_GIVEN,
+        metadata: Optional[Metadata] | NotGiven = NOT_GIVEN,
+        modalities: Optional[List[Literal["text", "audio"]]] | NotGiven = NOT_GIVEN,
+        n: Optional[int] | NotGiven = NOT_GIVEN,
+        parallel_tool_calls: bool | NotGiven = NOT_GIVEN,
+        prediction: Optional[ChatCompletionPredictionContentParam] | NotGiven = NOT_GIVEN,
+        presence_penalty: Optional[float] | NotGiven = NOT_GIVEN,
+        reasoning_effort: Optional[ReasoningEffort] | NotGiven = NOT_GIVEN,
+        response_format: completion_create_params.ResponseFormat | NotGiven = NOT_GIVEN,
+        seed: Optional[int] | NotGiven = NOT_GIVEN,
+        service_tier: Optional[Literal["auto", "default"]] | NotGiven = NOT_GIVEN,
+        stop: Union[Optional[str], List[str], None] | NotGiven = NOT_GIVEN,
+        store: Optional[bool] | NotGiven = NOT_GIVEN,
+        stream: Optional[Literal[False]] | Literal[True] | NotGiven = NOT_GIVEN,
+        stream_options: Optional[ChatCompletionStreamOptionsParam] | NotGiven = NOT_GIVEN,
+        temperature: Optional[float] | NotGiven = NOT_GIVEN,
+        tool_choice: ChatCompletionToolChoiceOptionParam | NotGiven = NOT_GIVEN,
+        tools: Iterable[ChatCompletionToolParam] | NotGiven = NOT_GIVEN,
+        top_logprobs: Optional[int] | NotGiven = NOT_GIVEN,
+        top_p: Optional[float] | NotGiven = NOT_GIVEN,
+        user: str | NotGiven = NOT_GIVEN,
+        web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
+        
+        # Toolflow-specific parameters
         parallel_tool_execution: bool = False,
         max_tool_calls: int = 10,
         max_workers: int = 10,
         graceful_error_handling: bool = True,
-        full_response: bool = None,
-        response_format = None,
-        **kwargs
+        full_response: Optional[bool] = None,
     ) -> Union[Any, Iterator[Any]]:
         """
         Create a chat completion with tool support.
         
+        This method supports all OpenAI chat completion parameters plus toolflow-specific enhancements.
+        
         Args:
-            tools: List of toolflow decorated functions or OpenAI tool dicts
-            parallel_tool_execution: Whether to execute multiple tool calls in parallel (default: False)
+            messages: A list of messages comprising the conversation so far
+            model: ID of the model to use
+            
+            # OpenAI Parameters (see OpenAI documentation for details)
+            audio: Parameters for audio output
+            frequency_penalty: Number between -2.0 and 2.0 for frequency penalty
+            function_call: Deprecated in favor of tool_choice
+            functions: Deprecated in favor of tools
+            logit_bias: Modify likelihood of specified tokens
+            logprobs: Whether to return log probabilities
+            max_completion_tokens: Upper bound for tokens generated
+            max_tokens: Maximum number of tokens (deprecated, use max_completion_tokens)
+            metadata: Set of key-value pairs for additional information
+            modalities: Output types the model should generate
+            n: Number of chat completion choices to generate
+            parallel_tool_calls: Whether to enable parallel function calling
+            prediction: Static predicted output content
+            presence_penalty: Number between -2.0 and 2.0 for presence penalty
+            reasoning_effort: Constrains effort on reasoning (o-series models only)
+            response_format: Format that the model must output
+            seed: For deterministic sampling
+            service_tier: Latency tier for processing
+            stop: Up to 4 sequences where API will stop generating
+            store: Whether to store output for model distillation/evals
+            stream: Whether to stream the response
+            stream_options: Options for streaming response
+            temperature: Sampling temperature between 0 and 2
+            tool_choice: Controls which tool is called by the model
+            tools: List of tools the model may call
+            top_logprobs: Number of most likely tokens to return
+            top_p: Alternative to sampling with temperature
+            user: Unique identifier for end-user
+            web_search_options: Web search tool options
+            
+            # Toolflow Parameters
+            parallel_tool_execution: Whether to execute multiple tool calls in parallel
             max_tool_calls: Maximum number of tool calls to execute
-            max_workers: Maximum number of worker threads to use for parallel execution of sync tools
-            graceful_error_handling: Whether to handle tool execution errors gracefully (default: True)
-            stream: Whether to stream the response (default: False)
-            **kwargs: All other OpenAI chat completion parameters
+            max_workers: Maximum number of worker threads for parallel execution
+            graceful_error_handling: Whether to handle tool execution errors gracefully
+            full_response: Override client-level full_response setting
         
         Returns:
             OpenAI ChatCompletion response, potentially with tool results, or Iterator if stream=True
         """
-        all_kwargs = kwargs.copy()
-        # Use method-level full_response if provided, otherwise use client-level setting
-        full_response = full_response if full_response is not None else self._full_response
+        # Build kwargs dict for OpenAI API call, excluding toolflow-specific params
+        openai_kwargs = {}
+        
+        # Add all OpenAI parameters that are not NOT_GIVEN
+        if audio is not NOT_GIVEN:
+            openai_kwargs['audio'] = audio
+        if frequency_penalty is not NOT_GIVEN:
+            openai_kwargs['frequency_penalty'] = frequency_penalty
+        if function_call is not NOT_GIVEN:
+            openai_kwargs['function_call'] = function_call
+        if functions is not NOT_GIVEN:
+            openai_kwargs['functions'] = functions
+        if logit_bias is not NOT_GIVEN:
+            openai_kwargs['logit_bias'] = logit_bias
+        if logprobs is not NOT_GIVEN:
+            openai_kwargs['logprobs'] = logprobs
+        if max_completion_tokens is not NOT_GIVEN:
+            openai_kwargs['max_completion_tokens'] = max_completion_tokens
+        if max_tokens is not NOT_GIVEN:
+            openai_kwargs['max_tokens'] = max_tokens
+        if metadata is not NOT_GIVEN:
+            openai_kwargs['metadata'] = metadata
+        if modalities is not NOT_GIVEN:
+            openai_kwargs['modalities'] = modalities
+        if n is not NOT_GIVEN:
+            openai_kwargs['n'] = n
+        if parallel_tool_calls is not NOT_GIVEN:
+            openai_kwargs['parallel_tool_calls'] = parallel_tool_calls
+        if prediction is not NOT_GIVEN:
+            openai_kwargs['prediction'] = prediction
+        if presence_penalty is not NOT_GIVEN:
+            openai_kwargs['presence_penalty'] = presence_penalty
+        if reasoning_effort is not NOT_GIVEN:
+            openai_kwargs['reasoning_effort'] = reasoning_effort
+        if response_format is not NOT_GIVEN:
+            openai_kwargs['response_format'] = response_format
+        if seed is not NOT_GIVEN:
+            openai_kwargs['seed'] = seed
+        if service_tier is not NOT_GIVEN:
+            openai_kwargs['service_tier'] = service_tier
+        if stop is not NOT_GIVEN:
+            openai_kwargs['stop'] = stop
+        if store is not NOT_GIVEN:
+            openai_kwargs['store'] = store
+        if stream is not NOT_GIVEN:
+            openai_kwargs['stream'] = stream
+        if stream_options is not NOT_GIVEN:
+            openai_kwargs['stream_options'] = stream_options
+        if temperature is not NOT_GIVEN:
+            openai_kwargs['temperature'] = temperature
+        if tool_choice is not NOT_GIVEN:
+            openai_kwargs['tool_choice'] = tool_choice
+        if top_logprobs is not NOT_GIVEN:
+            openai_kwargs['top_logprobs'] = top_logprobs
+        if top_p is not NOT_GIVEN:
+            openai_kwargs['top_p'] = top_p
+        if user is not NOT_GIVEN:
+            openai_kwargs['user'] = user
+        if web_search_options is not NOT_GIVEN:
+            openai_kwargs['web_search_options'] = web_search_options
 
-        if response_format:
-            if stream:
+        # Use method-level full_response if provided, otherwise use client-level setting
+        effective_full_response = full_response if full_response is not None else self._full_response
+
+        # Handle toolflow response_format (structured output)
+        toolflow_tools = None
+        if tools is not NOT_GIVEN:
+            toolflow_tools = list(tools)
+            
+        if response_format is not NOT_GIVEN and response_format is not None:
+            if stream is not NOT_GIVEN and stream:
                 raise ValueError("response_format is not supported for streaming")
             
             validate_response_format(response_format)
             # Create a dynamic response tool
             response_tool = create_openai_response_tool(response_format)
 
-            tools = [] if not tools else list(tools)  # Make a copy to avoid modifying the original
-            tools.append(response_tool)
+            toolflow_tools = toolflow_tools or []
+            toolflow_tools.append(response_tool)
 
         # Handle streaming
-        if stream:
+        if stream is not NOT_GIVEN and stream:
             return self._create_streaming(
                 model=model,
                 messages=messages,
-                tools=tools,
+                tools=toolflow_tools,
                 parallel_tool_execution=parallel_tool_execution,
                 max_tool_calls=max_tool_calls,
                 max_workers=max_workers,
                 graceful_error_handling=graceful_error_handling,
-                full_response=full_response,
-                **all_kwargs
+                full_response=effective_full_response,
+                **openai_kwargs
             )
         
-        if tools is None:
+        if toolflow_tools is None:
             response = self._original_completions.create(
                 model=model,
                 messages=messages,
-                **all_kwargs
+                **openai_kwargs
             )
-            return self._extract_response_content(response, full_response)
+            return self._extract_response_content(response, effective_full_response)
         
         # If tools are provided, handle tool execution
         tool_call_count = 0
-        tool_functions, tool_schemas = validate_and_prepare_openai_tools(tools)
-        current_messages = messages.copy()
+        tool_functions, tool_schemas = validate_and_prepare_openai_tools(toolflow_tools)
+        current_messages = list(messages)
         
         # Tool execution loop
         while tool_call_count < max_tool_calls:
@@ -143,7 +312,7 @@ class CompletionsWrapper:
                 model=model,
                 messages=current_messages,
                 tools=tool_schemas,
-                **all_kwargs
+                **openai_kwargs
             )
 
             if response.choices[0].finish_reason == "length":
@@ -152,12 +321,12 @@ class CompletionsWrapper:
             tool_calls = response.choices[0].message.tool_calls
             if not tool_calls:
                 # No tool calls, we're done
-                return self._extract_response_content(response, full_response)
+                return self._extract_response_content(response, effective_full_response)
             
             # Handle structured response
             structured_response = handle_openai_structured_response(response, response_format)
             if structured_response:
-                return self._extract_response_content(structured_response, full_response, is_structured=True)
+                return self._extract_response_content(structured_response, effective_full_response, is_structured=True)
             
             # Else we execute rest of the tools
             current_messages.append(response.choices[0].message)
@@ -176,7 +345,7 @@ class CompletionsWrapper:
     def _create_streaming(
         self,
         model: str,
-        messages: List[Dict[str, Any]],
+        messages: Iterable[ChatCompletionMessageParam],
         tools: List[Callable] = None,
         parallel_tool_execution: bool = False,
         max_tool_calls: int = 10,
@@ -196,7 +365,7 @@ class CompletionsWrapper:
             full_response = self._full_response
             
         def streaming_generator():
-            current_messages = messages.copy()
+            current_messages = list(messages)
             remaining_tool_calls = max_tool_calls
             
             while True:
@@ -267,7 +436,8 @@ class CompletionsWrapper:
                             max_workers=max_workers,
                             graceful_error_handling=graceful_error_handling
                         )
-                        remaining_tool_calls -= len(execution_response)
+                        
+                        remaining_tool_calls -= len(tool_calls)
                         current_messages.extend(execution_response)
                         
                         # Continue the loop to get the next response
@@ -277,41 +447,31 @@ class CompletionsWrapper:
                 break
         
         return streaming_generator()
-    
+
     def __getattr__(self, name):
         """Delegate all other attributes to the original completions."""
         return getattr(self._original_completions, name)
 
     def _handle_structured_response_tool_calls(self, response, tool_calls, response_format, full_response):
-        """
-        Handle tool calls when structured response format is specified.
+        """Handle structured response when tool calls are present."""
+        for tool_call in tool_calls:
+            if tool_call.function.name == "final_response_tool_internal":
+                try:
+                    parsed_args = json.loads(tool_call.function.arguments)
+                    structured_data = parsed_args.get('response')
+                    
+                    if structured_data:
+                        # Create a mock response with parsed data
+                        mock_response = type('MockResponse', (), {
+                            'choices': [type('Choice', (), {
+                                'message': type('Message', (), {
+                                    'parsed': response_format(**structured_data) if hasattr(response_format, '__call__') else structured_data
+                                })()
+                            })()]
+                        })()
+                        
+                        return self._extract_response_content(mock_response, full_response, is_structured=True)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
         
-        Returns:
-            - The structured response if final_response_tool_internal is called alone
-            - None if regular tool execution should continue
-            
-        Raises:
-            Exception: If model calls final_response_tool_internal with other tools
-        """
-        final_response_tool_calls = [
-            tc for tc in tool_calls 
-            if tc.function.name == "final_response_tool_internal"
-        ]
-        
-        if not final_response_tool_calls:
-            # No final response tool, continue with regular tool execution
-            return None
-            
-        if len(final_response_tool_calls) > 1:
-            raise Exception("Model called final_response_tool_internal multiple times")
-            
-        if len(tool_calls) > 1:
-            raise Exception(
-                "Model called final_response_tool_internal along with other tools. "
-                f"Expected only final_response_tool_internal, but got {len(tool_calls)} tools: "
-                f"{[tc.function.name for tc in tool_calls]}"
-            )
-        
-        # Single final_response_tool_internal call - handle structured response
-        response = handle_openai_structured_response(response, response_format)
-        return self._extract_response_content(response, full_response, is_structured=True)
+        return None

@@ -219,7 +219,7 @@ class MessagesAsyncWrapper:
                     raise Exception(f"Max tool calls reached ({max_tool_calls})")
                 
                 if tools:
-        tool_functions, tool_schemas = validate_and_prepare_anthropic_tools(tools)
+                    tool_functions, tool_schemas = validate_and_prepare_anthropic_tools(tools)
                     
                     # Make streaming API call with tools
                     stream = await self._original_messages.create(
@@ -235,60 +235,60 @@ class MessagesAsyncWrapper:
                         model=model,
                         messages=current_messages,
                         stream=True,
-                **kwargs
+                        **kwargs
                     )
-            
-            # Accumulate streaming content
-            message_content = []
-            accumulated_tool_calls = []
-            accumulated_json_strings = {}
-            
-            async for chunk in stream:
-                if return_full_response:
-                    yield chunk
                 
-                # Accumulate content and detect tool calls
-                has_tool_calls = accumulate_anthropic_streaming_content(
-                    chunk=chunk,
-                    message_content=message_content,
-                    accumulated_tool_calls=accumulated_tool_calls,
-                    accumulated_json_strings=accumulated_json_strings,
-                    graceful_error_handling=graceful_error_handling
-                )
+                # Accumulate streaming content
+                message_content = []
+                accumulated_tool_calls = []
+                accumulated_json_strings = {}
                 
-                # Yield text content if not full response
-                if not return_full_response:
-                    if hasattr(chunk, 'type') and chunk.type == 'content_block_delta':
+                async for chunk in stream:
+                    if return_full_response:
+                        yield chunk
+                    
+                    # Accumulate content and detect tool calls
+                    has_tool_calls = accumulate_anthropic_streaming_content(
+                        chunk=chunk,
+                        message_content=message_content,
+                        accumulated_tool_calls=accumulated_tool_calls,
+                        accumulated_json_strings=accumulated_json_strings,
+                        graceful_error_handling=graceful_error_handling
+                    )
+                    
+                    # Yield text content if not full response
+                    if not return_full_response:
+                        if hasattr(chunk, 'type') and chunk.type == 'content_block_delta':
                             if (hasattr(chunk, 'delta') and 
                                 hasattr(chunk.delta, 'type') and 
                                 chunk.delta.type == 'text_delta' and
                                 hasattr(chunk.delta, 'text')):
-                            yield chunk.delta.text
-            
+                                yield chunk.delta.text
+                
                 # Check if we have tool calls to execute
                 if accumulated_tool_calls and tools:
-            # Execute tools
-            tool_results = await execute_anthropic_tools_async(
-                tool_functions=tool_functions,
-                tool_calls=accumulated_tool_calls,
-                parallel_tool_execution=parallel_tool_execution,
-                max_workers=max_workers,
-                graceful_error_handling=graceful_error_handling
-            )
+                    # Execute tools
+                    tool_results = await execute_anthropic_tools_async(
+                        tool_functions=tool_functions,
+                        tool_calls=accumulated_tool_calls,
+                        parallel_tool_execution=parallel_tool_execution,
+                        max_workers=max_workers,
+                        graceful_error_handling=graceful_error_handling
+                    )
                     
                     remaining_tool_calls -= len(tool_results)
-            
-            # Add assistant message with tool calls
-            assistant_message = {
-                "role": "assistant",
-                "content": message_content
-            }
-            current_messages.append(assistant_message)
-            
-            # Add tool results
-            tool_result_message = format_anthropic_tool_calls_for_messages(tool_results)
-            current_messages.append(tool_result_message)
-            
+                    
+                    # Add assistant message with tool calls
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": message_content
+                    }
+                    current_messages.append(assistant_message)
+                    
+                    # Add tool results
+                    tool_result_message = format_anthropic_tool_calls_for_messages(tool_results)
+                    current_messages.append(tool_result_message)
+                    
                     # Continue the loop to get the next response
                     continue
                 
