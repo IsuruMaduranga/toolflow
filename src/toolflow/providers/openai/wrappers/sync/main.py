@@ -6,41 +6,20 @@ This module contains the core synchronous wrapper classes for OpenAI clients.
 from typing import Any, Dict, List, Callable, Iterator, Union, Optional, Iterable, Literal
 
 # Import OpenAI types for proper parameter typing
-try:
-    from openai.types.chat import (
-        ChatCompletionMessageParam,
-        ChatCompletionToolParam,
-        ChatCompletionAudioParam,
-        ChatCompletionStreamOptionsParam,
-        ChatCompletionPredictionContentParam,
-        ChatCompletionToolChoiceOptionParam,
-    )
-    from openai.types.shared.chat_model import ChatModel
-    from openai.types.shared_params.metadata import Metadata
-    from openai.types.shared.reasoning_effort import ReasoningEffort
-    from openai.types.chat import completion_create_params
-    from openai._types import NOT_GIVEN, NotGiven
-    OPENAI_TYPES_AVAILABLE = True
-except ImportError:
-    # Fallback types for when OpenAI is not installed
-    ChatCompletionMessageParam = Dict[str, Any]
-    ChatModel = str
-    ChatCompletionAudioParam = Dict[str, Any]
-    ChatCompletionStreamOptionsParam = Dict[str, Any]
-    ChatCompletionPredictionContentParam = Dict[str, Any]
-    ChatCompletionToolChoiceOptionParam = Union[str, Dict[str, Any]]
-    ChatCompletionToolParam = Dict[str, Any]
-    Metadata = Dict[str, str]
-    ReasoningEffort = str
-    completion_create_params = type('completion_create_params', (), {
-        'FunctionCall': Union[str, Dict[str, Any]],
-        'Function': Dict[str, Any],
-        'ResponseFormat': Union[str, Dict[str, Any]],
-        'WebSearchOptions': Dict[str, Any]
-    })()
-    NOT_GIVEN = object()
-    NotGiven = type(NOT_GIVEN)
-    OPENAI_TYPES_AVAILABLE = False
+
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionToolParam,
+    ChatCompletionAudioParam,
+    ChatCompletionStreamOptionsParam,
+    ChatCompletionPredictionContentParam,
+    ChatCompletionToolChoiceOptionParam,
+)
+from openai.types.shared.chat_model import ChatModel
+from openai.types.shared_params.metadata import Metadata
+from openai.types.shared.reasoning_effort import ReasoningEffort
+from openai.types.chat import completion_create_params
+from openai._types import NOT_GIVEN, NotGiven
 
 from ...tool_execution import (
     validate_and_prepare_openai_tools,
@@ -449,27 +428,3 @@ class CompletionsWrapper:
     def __getattr__(self, name):
         """Delegate all other attributes to the original completions."""
         return getattr(self._original_completions, name)
-
-    def _handle_structured_response_tool_calls(self, response, tool_calls, response_format, full_response):
-        """Handle structured response when tool calls are present."""
-        for tool_call in tool_calls:
-            if tool_call.function.name == "final_response_tool_internal":
-                try:
-                    parsed_args = json.loads(tool_call.function.arguments)
-                    structured_data = parsed_args.get('response')
-                    
-                    if structured_data:
-                        # Create a mock response with parsed data
-                        mock_response = type('MockResponse', (), {
-                            'choices': [type('Choice', (), {
-                                'message': type('Message', (), {
-                                    'parsed': response_format(**structured_data) if hasattr(response_format, '__call__') else structured_data
-                                })()
-                            })()]
-                        })()
-                        
-                        return self._extract_response_content(mock_response, full_response, is_structured=True)
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    continue
-        
-        return None

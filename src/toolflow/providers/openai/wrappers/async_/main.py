@@ -6,41 +6,21 @@ This module contains the core asynchronous wrapper classes for OpenAI clients.
 from typing import Any, Dict, List, Callable, AsyncIterator, Union, Optional, Iterable, Literal
 
 # Import OpenAI types for proper parameter typing
-try:
-    from openai.types.chat import (
-        ChatCompletionMessageParam,
-        ChatCompletionToolParam,
-        ChatCompletionAudioParam,
-        ChatCompletionStreamOptionsParam,
-        ChatCompletionPredictionContentParam,
-        ChatCompletionToolChoiceOptionParam,
-    )
-    from openai.types.shared.chat_model import ChatModel
-    from openai.types.shared_params.metadata import Metadata
-    from openai.types.shared.reasoning_effort import ReasoningEffort
-    from openai.types.chat import completion_create_params
-    from openai._types import NOT_GIVEN, NotGiven
-    OPENAI_TYPES_AVAILABLE = True
-except ImportError:
-    # Fallback types for when OpenAI is not installed
-    ChatCompletionMessageParam = Dict[str, Any]
-    ChatModel = str
-    ChatCompletionAudioParam = Dict[str, Any]
-    ChatCompletionStreamOptionsParam = Dict[str, Any]
-    ChatCompletionPredictionContentParam = Dict[str, Any]
-    ChatCompletionToolChoiceOptionParam = Union[str, Dict[str, Any]]
-    ChatCompletionToolParam = Dict[str, Any]
-    Metadata = Dict[str, str]
-    ReasoningEffort = str
-    completion_create_params = type('completion_create_params', (), {
-        'FunctionCall': Union[str, Dict[str, Any]],
-        'Function': Dict[str, Any],
-        'ResponseFormat': Union[str, Dict[str, Any]],
-        'WebSearchOptions': Dict[str, Any]
-    })()
-    NOT_GIVEN = object()
-    NotGiven = type(NOT_GIVEN)
-    OPENAI_TYPES_AVAILABLE = False
+
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionToolParam,
+    ChatCompletionAudioParam,
+    ChatCompletionStreamOptionsParam,
+    ChatCompletionPredictionContentParam,
+    ChatCompletionToolChoiceOptionParam,
+)
+from openai.types.shared.chat_model import ChatModel
+from openai.types.shared_params.metadata import Metadata
+from openai.types.shared.reasoning_effort import ReasoningEffort
+from openai.types.chat import completion_create_params
+from openai._types import NOT_GIVEN, NotGiven
+
 
 from ...tool_execution import (
     validate_and_prepare_openai_tools,
