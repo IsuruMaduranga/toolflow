@@ -3,11 +3,12 @@ Main asynchronous OpenAI wrapper classes.
 
 This module contains the core asynchronous wrapper classes for OpenAI clients.
 """
-from typing import Any, Dict, List, Callable, AsyncIterator, Union, Optional, Iterable, Literal
+from typing import Any, Dict, List, Callable, AsyncIterator, Union, Optional, Iterable, Literal, TypeVar, overload
 
-# Import OpenAI types for proper parameter typing
-
+# Import OpenAI types for proper parameter typing and return types
 from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionChunk,
     ChatCompletionMessageParam,
     ChatCompletionToolParam,
     ChatCompletionAudioParam,
@@ -15,6 +16,10 @@ from openai.types.chat import (
     ChatCompletionPredictionContentParam,
     ChatCompletionToolChoiceOptionParam,
 )
+from openai import AsyncStream
+
+# TypeVar for response format (Pydantic models)
+T = TypeVar('T')
 from openai.types.shared.chat_model import ChatModel
 from openai.types.shared_params.metadata import Metadata
 from openai.types.shared.reasoning_effort import ReasoningEffort
@@ -83,6 +88,70 @@ class CompletionsAsyncWrapper:
         
         return response.choices[0].message.content
     
+    # Overloads for different return types based on parameters
+    @overload
+    async def create(
+        self,
+        *,
+        messages: Iterable[ChatCompletionMessageParam],
+        model: Union[str, ChatModel],
+        stream: Literal[True],
+        full_response: Literal[True],
+        **kwargs
+    ) -> AsyncStream[ChatCompletionChunk]: ...
+    
+    @overload
+    async def create(
+        self,
+        *,
+        messages: Iterable[ChatCompletionMessageParam],
+        model: Union[str, ChatModel],
+        stream: Literal[True],
+        full_response: Literal[False],
+        **kwargs
+    ) -> AsyncIterator[str]: ...
+    
+    @overload
+    async def create(
+        self,
+        *,
+        messages: Iterable[ChatCompletionMessageParam],
+        model: Union[str, ChatModel],
+        stream: Literal[True],
+        **kwargs
+    ) -> AsyncIterator[Any]: ...
+    
+    @overload
+    async def create(
+        self,
+        *,
+        messages: Iterable[ChatCompletionMessageParam],
+        model: Union[str, ChatModel],
+        response_format: completion_create_params.ResponseFormat,
+        full_response: Literal[False],
+        **kwargs
+    ) -> T: ...
+    
+    @overload
+    async def create(
+        self,
+        *,
+        messages: Iterable[ChatCompletionMessageParam],
+        model: Union[str, ChatModel],
+        full_response: Literal[True],
+        **kwargs
+    ) -> ChatCompletion: ...
+    
+    @overload
+    async def create(
+        self,
+        *,
+        messages: Iterable[ChatCompletionMessageParam],
+        model: Union[str, ChatModel],
+        full_response: Literal[False],
+        **kwargs
+    ) -> str: ...
+
     async def create(
         self,
         *,
@@ -127,7 +196,7 @@ class CompletionsAsyncWrapper:
         max_workers: int = 10,
         graceful_error_handling: bool = True,
         full_response: Optional[bool] = None,
-    ) -> Union[Any, AsyncIterator[Any]]:
+    ) -> Union[str, ChatCompletion, Any, AsyncStream[ChatCompletionChunk], AsyncIterator[str], AsyncIterator[Any]]:
         """
         Create a chat completion with tool support (async).
         
@@ -333,7 +402,7 @@ class CompletionsAsyncWrapper:
         graceful_error_handling: bool = True,
         full_response: bool = None,
         **kwargs
-    ) -> AsyncIterator[Any]:
+    ) -> Union[AsyncStream[ChatCompletionChunk], AsyncIterator[str], AsyncIterator[Any]]:
         """
         Create an async streaming chat completion with tool support.
         
