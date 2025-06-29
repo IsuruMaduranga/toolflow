@@ -14,7 +14,8 @@ def sync_execution_loop(
      max_tool_calls,
      parallel_tool_execution,
      response_format,
-     full_response) = filter_toolflow_params(**kwargs)
+     full_response,
+     graceful_error_handling) = filter_toolflow_params(**kwargs)
     
     tools = kwargs.get("tools", [])
     messages = kwargs.get("messages", [])
@@ -47,7 +48,7 @@ def sync_execution_loop(
         # Add assistant message with tool calls to conversation
         messages.append(handler.create_assistant_message(text, tool_calls))
         
-        tool_results = execute_tools(tool_calls, tool_map, parallel_tool_execution)
+        tool_results = execute_tools(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
         messages.extend(handler.create_tool_result_messages(tool_results))
 
     raise Exception("Max tool calls reached without a valid response")
@@ -62,7 +63,8 @@ async def async_execution_loop(
      max_tool_calls,
      parallel_tool_execution,
      response_format,
-     full_response) = filter_toolflow_params(**kwargs)
+     full_response,
+     graceful_error_handling) = filter_toolflow_params(**kwargs)
     
     tools = kwargs.get("tools", [])
     if not tools:
@@ -93,7 +95,7 @@ async def async_execution_loop(
         # Add assistant message with tool calls to conversation
         kwargs["messages"].append(handler.create_assistant_message(text, tool_calls))
         
-        tool_results = await execute_tools_async(tool_calls, tool_map)
+        tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling)
         kwargs["messages"].extend(handler.create_tool_result_messages(tool_results))
 
     raise Exception("Max tool calls reached without a valid response")
@@ -107,7 +109,8 @@ def sync_streaming_execution_loop(
      max_tool_calls,
      parallel_tool_execution,
      response_format,
-     full_response) = filter_toolflow_params(**kwargs)
+     full_response,
+     graceful_error_handling) = filter_toolflow_params(**kwargs)
     
     tools = kwargs.get("tools", [])
     messages = kwargs.get("messages", [])
@@ -168,7 +171,7 @@ def sync_streaming_execution_loop(
             messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
             
             # Execute tools
-            tool_results = execute_tools(accumulated_tool_calls, tool_map, parallel_tool_execution)
+            tool_results = execute_tools(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
             messages.extend(handler.create_tool_result_messages(tool_results))
             
             # Update kwargs with new messages for next iteration
@@ -191,9 +194,10 @@ def async_streaming_execution_loop(
     """Asynchronous streaming execution loop with tool calling support."""
     (kwargs,
     max_tool_calls,
-    parallel_tool_execution,
+    parallel_tool_execution, # We ignore this in async case
     response_format,
-    full_response) = filter_toolflow_params(**kwargs)
+    full_response,
+    graceful_error_handling) = filter_toolflow_params(**kwargs)
 
     async def internal_generator():
         
@@ -254,7 +258,7 @@ def async_streaming_execution_loop(
                 messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
                 
                 # Execute tools
-                tool_results = await execute_tools_async(accumulated_tool_calls, tool_map)
+                tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling)
                 messages.extend(handler.create_tool_result_messages(tool_results))
                 
                 # Update kwargs with new messages for next iteration

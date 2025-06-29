@@ -114,7 +114,8 @@ def cleanup_executors():
 def execute_tools(
     tool_calls: List[Dict],
     tool_map: Dict[str, Callable],
-    parallel: bool = False  # Changed default to False for playground-friendliness
+    parallel: bool = False,  # Changed default to False for playground-friendliness
+    graceful_error_handling: bool = True
 ) -> List[Dict]:
     """
     Executes tool calls synchronously.
@@ -123,6 +124,7 @@ def execute_tools(
         tool_calls: List of tool calls to execute
         tool_map: Mapping of tool names to functions
         parallel: If True, use global sync thread pool; if False, execute sequentially
+        graceful_error_handling: If True, return error messages; if False, raise exceptions
     
     The global sync thread pool defaults to 4 threads and can be configured via:
     - TOOLFLOW_SYNC_MAX_WORKERS environment variable
@@ -134,7 +136,7 @@ def execute_tools(
     
     if not parallel:
         # Sequential execution (default for playground use)
-        return [_run_sync_tool(tool_call, tool_map[tool_call["function"]["name"]]) for tool_call in tool_calls]
+        return [_run_sync_tool(tool_call, tool_map[tool_call["function"]["name"]], graceful_error_handling) for tool_call in tool_calls]
     
     # Parallel execution using global sync thread pool
     executor = get_sync_executor()
@@ -142,7 +144,8 @@ def execute_tools(
         executor.submit(
             _run_sync_tool,
             tool_call,
-            tool_map[tool_call["function"]["name"]]
+            tool_map[tool_call["function"]["name"]],
+            graceful_error_handling
         ): tool_call
         for tool_call in tool_calls
     }
@@ -156,7 +159,8 @@ def execute_tools(
 
 async def execute_tools_async(
     tool_calls: List[Dict],
-    tool_map: Dict[str, Callable[..., Any]]
+    tool_map: Dict[str, Callable[..., Any]],
+    graceful_error_handling: bool = True
 ) -> List[Dict]:
     """
     Executes tool calls asynchronously, handling both sync and async tools.
@@ -167,6 +171,11 @@ async def execute_tools_async(
         * Otherwise uses asyncio's default thread pool (recommended)
     
     Always executes tools concurrently for optimal async performance.
+    
+    Args:
+        tool_calls: List of tool calls to execute
+        tool_map: Mapping of tool names to functions
+        graceful_error_handling: If True, return error messages; if False, raise exceptions
     """
     sync_tool_calls = []
     async_tool_tasks: List[Coroutine] = []
@@ -176,7 +185,7 @@ async def execute_tools_async(
         if tool_func:
             if asyncio.iscoroutinefunction(tool_func):
                 async_tool_tasks.append(
-                    _run_async_tool(tool_call, tool_func)
+                    _run_async_tool(tool_call, tool_func, graceful_error_handling)
                 )
             else:
                 sync_tool_calls.append(tool_call)
@@ -194,7 +203,8 @@ async def execute_tools_async(
                 executor,  # Custom async executor or None (asyncio default)
                 _run_sync_tool,
                 call,
-                tool_map[call["function"]["name"]]
+                tool_map[call["function"]["name"]],
+                graceful_error_handling
             )
             for call in sync_tool_calls
         ]
@@ -206,24 +216,30 @@ async def execute_tools_async(
     return sync_results + async_results
 
 
-def _run_sync_tool(tool_call: Dict, tool_func: Callable) -> Dict:
+def _run_sync_tool(tool_call: Dict, tool_func: Callable, graceful_error_handling: bool = True) -> Dict:
     try:
         result = tool_func(**tool_call["function"]["arguments"])
         return {"tool_call_id": tool_call["id"], "output": result}
     except Exception as e:
-        return {
-            "tool_call_id": tool_call["id"],
-            "output": f"Error executing tool {tool_call['function']['name']}: {e}",
-            "is_error": True,
-        }
+        if graceful_error_handling:
+            return {
+                "tool_call_id": tool_call["id"],
+                "output": f"Error executing tool {tool_call['function']['name']}: {e}",
+                "is_error": True,
+            }
+        else:
+            raise
 
-async def _run_async_tool(tool_call: Dict, tool_func: Callable[..., Coroutine]) -> Dict:
+async def _run_async_tool(tool_call: Dict, tool_func: Callable[..., Coroutine], graceful_error_handling: bool = True) -> Dict:
     try:
         result = await tool_func(**tool_call["function"]["arguments"])
         return {"tool_call_id": tool_call["id"], "output": result}
     except Exception as e:
-        return {
-            "tool_call_id": tool_call["id"],
-            "output": f"Error executing tool {tool_call['function']['name']}: {e}",
-            "is_error": True,
-        }
+        if graceful_error_handling:
+            return {
+                "tool_call_id": tool_call["id"],
+                "output": f"Error executing tool {tool_call['function']['name']}: {e}",
+                "is_error": True,
+            }
+        else:
+            raise
