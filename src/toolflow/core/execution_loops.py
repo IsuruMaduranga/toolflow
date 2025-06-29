@@ -6,25 +6,44 @@ from .utils import filter_toolflow_params
 
 def sync_execution_loop(
     handler: AbstractProviderHandler,
-    max_tool_calls: int = 5,
-    parallel_tool_execution: bool = False,
-    max_workers: int | None = None,
     **kwargs: Any,
 ) -> Any:
     """Synchronous execution loop for tool calling."""
+
+    (kwargs,
+     max_tool_calls,
+     parallel_tool_execution,   
+     max_workers,
+     response_format,
+     full_response) = filter_toolflow_params(**kwargs)
+    
     tools = kwargs.get("tools", [])
     messages = kwargs.get("messages", [])
-    response_format = kwargs.get("response_format", None)
-    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     
+    if not tools:
+        response = handler.call_api(messages=messages, **kwargs)
+        text, _, raw_response = handler.handle_response(response)
+        return raw_response if full_response else text
+
+    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    response_format_tool = handler.prepare_response_format(response_format)
+    if response_format_tool:
+        tool_schemas.append(response_format_tool)
+    
+    kwargs["tools"] = tool_schemas
     for _ in range(max_tool_calls):
-        response = handler.call_api(messages=messages, tools=tool_schemas, **kwargs)
+        response = handler.call_api(**kwargs)
         text, tool_calls, raw_response = handler.handle_response(response)
 
         if not tool_calls:
-            if pydantic_model and text:
-                return pydantic_model.model_validate_json(text)
-            return raw_response if kwargs.get("full_response") else text
+            return raw_response if full_response else text
+        
+        if response_format_tool:
+            for tool_call in tool_calls:
+                if tool_call["function"]["name"] == response_format_tool["function"]["name"]:
+                    # Extract the structured data from the tool call arguments
+                    parsed = handler.parse_structured_output(tool_call, response_format)
+                    return raw_response if full_response else parsed
 
         # Add assistant message with tool calls to conversation
         messages.append(handler.create_assistant_message(text, tool_calls))
@@ -32,12 +51,7 @@ def sync_execution_loop(
         tool_results = execute_tools(tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
         messages.extend(handler.create_tool_result_messages(tool_results))
 
-    # Final call after max tool calls
-    response = handler.call_api(messages=messages, tools=tool_schemas, **kwargs)
-    text, _, raw_response = handler.handle_response(response)
-    if pydantic_model and text:
-        return pydantic_model.model_validate_json(text)
-    return raw_response if kwargs.get("full_response") else text
+    raise Exception("Max tool calls reached without a valid response")
 
 async def async_execution_loop(
     handler: AbstractProviderHandler,
@@ -88,14 +102,17 @@ async def async_execution_loop(
 
 def sync_streaming_execution_loop(
     handler: AbstractProviderHandler,
-    messages: List[Dict],
-    tools: List[Any],
     **kwargs: Any,
 ) -> Generator[Any, None, None]:
     """Synchronous streaming execution loop."""
-    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    (kwargs,
+     max_tool_calls,
+     parallel_tool_execution,   
+     max_workers,
+     response_format,
+     full_response) = filter_toolflow_params(**kwargs)
     
-    response = handler.call_api(messages=messages, tools=tool_schemas, stream=True, **kwargs)
+    response = handler.call_api(stream=True, **kwargs)
     
     text_so_far = ""
     for text, tool_calls, chunk in handler.handle_streaming_response(response):
@@ -106,22 +123,22 @@ def sync_streaming_execution_loop(
             # This part can be enhanced later
             pass
         
-        if pydantic_model:
-            yield chunk # Yield raw chunks for pydantic model streaming
-        else:
-             yield chunk if kwargs.get("full_response") else text
+        yield chunk if kwargs.get("full_response") else text
 
 def async_streaming_execution_loop(
     handler: AbstractProviderHandler,
-    messages: List[Dict],
-    tools: List[Any],
     **kwargs: Any,
 ) -> AsyncGenerator[Any, None]:
     """Asynchronous streaming execution loop."""
     async def internal_generator():
-        tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+        (kwargs,
+         max_tool_calls,
+         parallel_tool_execution,   
+         max_workers,
+         response_format,
+         full_response) = filter_toolflow_params(**kwargs)
         
-        response = await handler.call_api_async(messages=messages, tools=tool_schemas, stream=True, **kwargs)
+        response = await handler.call_api_async(stream=True, **kwargs)
         
         text_so_far = ""
         async for text, tool_calls, chunk in handler.handle_streaming_response_async(response):
@@ -131,9 +148,6 @@ def async_streaming_execution_loop(
                  # Streaming with tool calls is not yet supported in the core loop
                 pass
 
-            if pydantic_model:
-                yield chunk
-            else:
-                yield chunk if kwargs.get("full_response") else text
+            yield chunk if kwargs.get("full_response") else text
                 
     return internal_generator()
