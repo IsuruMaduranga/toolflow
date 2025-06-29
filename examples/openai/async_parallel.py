@@ -63,7 +63,7 @@ async def process_data(data_type: str) -> str:
 
 async def main():
     # Initialize async client - default behavior: simplified API (returns content directly)
-    async_client = toolflow.from_openai_async(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
+    async_client = toolflow.from_openai(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
     print("=== Async Sequential Execution ===")
     start_time = time.time()

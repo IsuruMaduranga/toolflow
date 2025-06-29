@@ -169,29 +169,31 @@ class AnthropicHandler(AbstractProviderHandler):
             "role": "user",
             "content": content
         }]
-
+    
+    #@Override
     def prepare_tool_schemas(self, tools: List[Any]) -> tuple[List[Dict], Dict]:
         """Prepare tool schemas in Anthropic format."""
-        tool_schemas = []
-        tool_map = {}
-
-        if tools:
-            for tool in tools:
-                if callable(tool) and hasattr(tool, '_tool_metadata'):
-                    # Convert OpenAI-style metadata to Anthropic format
-                    openai_metadata = tool._tool_metadata
-                    anthropic_schema = {
-                        "name": openai_metadata['function']['name'],
-                        "description": openai_metadata['function']['description'],
-                        "input_schema": openai_metadata['function']['parameters']
-                    }
-                    
-                    tool_schemas.append(anthropic_schema)
-                    tool_map[openai_metadata['function']['name']] = tool
-                else:
-                    raise ValueError("All tools must be decorated with @tool")
         
-        return tool_schemas, tool_map
+        # Get OpenAI-format schemas from parent
+        openai_tool_schemas, tool_map = super().prepare_tool_schemas(tools)
+        
+        # Convert OpenAI format to Anthropic format
+        anthropic_tool_schemas = []
+        for openai_schema in openai_tool_schemas:
+            anthropic_schema = {
+                "name": openai_schema['function']['name'],
+                "description": openai_schema['function']['description'],
+                "input_schema": openai_schema['function']['parameters']
+            }
+            anthropic_tool_schemas.append(anthropic_schema)
+        
+        return anthropic_tool_schemas, tool_map
+
+    def parse_structured_output(self, tool_call: Dict, response_format: Any) -> Any:
+        """Handle the structured output from the tool call."""
+        tool_arguments = tool_call["function"]["arguments"]
+        response_data = tool_arguments.get('response', tool_arguments)
+        return response_format.model_validate(response_data)
 
     def _format_tool_call(self, tool_use_block) -> Dict:
         """Format Anthropic tool_use block to standard format."""
@@ -202,4 +204,4 @@ class AnthropicHandler(AbstractProviderHandler):
                 "name": tool_use_block.name,
                 "arguments": tool_use_block.input,
             },
-        } 
+        }

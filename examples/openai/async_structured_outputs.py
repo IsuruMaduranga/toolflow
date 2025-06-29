@@ -19,7 +19,7 @@ class FibonacciResponse(BaseModel):
 
 async def main():
     # Default behavior: simplified API (returns parsed data directly)
-    client = toolflow.from_openai_async(AsyncOpenAI())
+    client = toolflow.from_openai(AsyncOpenAI())
 
     # Toolflow enhanced API - returns parsed data directly
     parsed_data = await client.chat.completions.create(

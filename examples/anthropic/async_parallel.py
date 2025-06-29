@@ -63,7 +63,7 @@ async def process_data(data_type: str) -> str:
 
 async def main():
     # Initialize async client - default behavior: simplified API (returns content directly)
-    async_client = toolflow.from_anthropic_async(AsyncAnthropic())
+    async_client = toolflow.from_anthropic(AsyncAnthropic())
 
     print("=== Async Sequential Execution ===")
     start_time = time.time()

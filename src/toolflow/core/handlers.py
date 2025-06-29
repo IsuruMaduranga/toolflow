@@ -55,7 +55,7 @@ class AbstractProviderHandler(ABC):
         return response_format.model_validate(response_data)
 
     # Override following method for provider specific handling
-    def prepare_response_format(self,response_format: Any) -> Dict:
+    def get_response_format_tool(self,response_format: Any) -> Dict:
         # check if response_format is a Pydantic model
         if not response_format:
             return None
@@ -74,12 +74,15 @@ class AbstractProviderHandler(ABC):
         tool_map = {}
 
         if tools:
+            response_format_tool_count = 0
             for tool in tools:
                 # check is tool is a function else error
                 if callable(tool):
                     schema = tool._tool_metadata if hasattr(tool, "_tool_metadata") else self.get_tool_schema(tool)
                     if schema["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                        raise ValueError(f"You cannot use the {RESPONSE_FORMAT_TOOL_NAME} tool as a tool. It is used internally to format the response.")
+                        response_format_tool_count += 1
+                        if response_format_tool_count > 1:
+                            raise ValueError(f"You cannot use the {RESPONSE_FORMAT_TOOL_NAME} and response_format at the same time.")
                     tool_schemas.append(schema)
                     tool_map[schema["function"]["name"]] = tool
                     continue

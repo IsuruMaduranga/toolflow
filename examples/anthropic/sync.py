@@ -4,6 +4,7 @@ from anthropic import Anthropic
 @toolflow.tool
 def get_weather(location: str) -> str:
     """Get the current weather in a given location"""
+    print(f"Tool: Getting weather for {location}")
     return f"Weather in {location}: Sunny, 72°F"
 
 client = toolflow.from_anthropic(Anthropic())
