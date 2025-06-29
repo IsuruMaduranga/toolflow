@@ -114,6 +114,6 @@ class AsyncCompletionsWrapper:
         if kwargs.get("stream", False):
             if kwargs.get("response_format", None):
                 raise ValueError("response_format is not supported for streaming")
-            return await async_streaming_execution_loop(handler=self.handler, **kwargs)
+            return async_streaming_execution_loop(handler=self.handler, **kwargs)
         else:
             return await async_execution_loop(handler=self.handler, **kwargs)

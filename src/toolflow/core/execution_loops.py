@@ -192,13 +192,14 @@ def async_streaming_execution_loop(
     **kwargs: Any,
 ) -> AsyncGenerator[Any, None]:
     """Asynchronous streaming execution loop with tool calling support."""
+    (kwargs,
+    max_tool_calls,
+    parallel_tool_execution,   
+    max_workers,
+    response_format,
+    full_response) = filter_toolflow_params(**kwargs)
+
     async def internal_generator():
-        (kwargs,
-         max_tool_calls,
-         parallel_tool_execution,   
-         max_workers,
-         response_format,
-         full_response) = filter_toolflow_params(**kwargs)
         
         tools = kwargs.get("tools", [])
         messages = kwargs.get("messages", [])
