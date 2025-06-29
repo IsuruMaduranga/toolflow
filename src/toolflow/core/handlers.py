@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Generator, List, Dict, Callable
 from .constants import RESPONSE_FORMAT_TOOL_NAME
+from .utils import get_structured_output_tool, get_tool_schema
 
 class AbstractProviderHandler(ABC):
     """
@@ -46,18 +47,42 @@ class AbstractProviderHandler(ABC):
         """Create tool result messages for the conversation."""
         pass
 
-    @abstractmethod
-    def get_structured_output_tool(self, pydantic_model: Any) -> Dict:
-        """Get the tool definition for structured output."""
-        pass
+    # Override following method for provider specific handling
+    def parse_structured_output(self, tool_call: Dict, response_format: Any) -> Any:
+        """Handle the structured output from the tool call."""
+        tool_arguments = tool_call["function"]["arguments"]
+        response_data = tool_arguments.get('response', tool_arguments)
+        return response_format.model_validate(response_data)
 
-    @abstractmethod
-    def get_structured_output_tool(self, pydantic_model: Any) -> Dict:
-        return {
-            "type": "function",
-            "function": {
-                "name": RESPONSE_FORMAT_TOOL_NAME,
-                "description": pydantic_model.model_config.get("description", "Extract information and present it in a structured format."),
-                "parameters": pydantic_model.model_json_schema(),
-            },
-        }
+    # Override following method for provider specific handling
+    def prepare_response_format(self,response_format: Any) -> Dict:
+        # check if response_format is a Pydantic model
+        if not response_format:
+            return None
+        if isinstance(response_format, type) and hasattr(response_format, 'model_json_schema'):
+            return get_structured_output_tool(response_format)
+        raise ValueError(f"Response format {response_format} is not a Pydantic model")
+    
+    # Override following method for provider specific handling
+    def get_tool_schema(self, tool: Any) -> Dict:
+        """Get the tool schema for the tool."""
+        return get_tool_schema(tool)
+    
+    # Override following method for provider specific handling
+    def prepare_tool_schemas(self, tools: List[Any]) -> tuple[List[Dict], Dict]: 
+        tool_schemas = []
+        tool_map = {}
+
+        if tools:
+            for tool in tools:
+                # check is tool is a function else error
+                if callable(tool):
+                    schema = tool._tool_metadata if hasattr(tool, "_tool_metadata") else self.get_tool_schema(tool)
+                    if schema["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+                        raise ValueError(f"You cannot use the {RESPONSE_FORMAT_TOOL_NAME} tool as a tool. It is used internally to format the response.")
+                    tool_schemas.append(schema)
+                    tool_map[schema["function"]["name"]] = tool
+                    continue
+                else:
+                    raise ValueError(f"Tool {tool} is not a function")
+        return tool_schemas, tool_map

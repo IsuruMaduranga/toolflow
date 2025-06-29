@@ -120,7 +120,7 @@ class AsyncCompletionsWrapper:
     def __init__(self, client: AsyncOpenAI, full_response: bool = False):
         self._client = client
         self.full_response = full_response
-        self.original_create = client.chat.completions.create
+        self.handler = OpenAIHandler(client, client.chat.completions.create)
         #self._append_toolflow_docs()
 
     # def _append_toolflow_docs(self):
@@ -138,8 +138,9 @@ class AsyncCompletionsWrapper:
     async def create(self, *, stream=True, **kwargs: Any) -> AsyncIterable[ChatCompletionChunk]: ...
 
     async def create(self, **kwargs: Any) -> Any:
-        handler = OpenAIHandler(self._client, self.original_create)
+        # merge full_response with kwargs
+        kwargs["full_response"] = self.full_response
         if kwargs.get("stream", False):
-            return await async_streaming_execution_loop(handler=handler, **kwargs)
+            return await async_streaming_execution_loop(handler=self.handler, **kwargs)
         else:
-            return await async_execution_loop(handler=handler, **kwargs)
+            return await async_execution_loop(handler=self.handler, **kwargs)

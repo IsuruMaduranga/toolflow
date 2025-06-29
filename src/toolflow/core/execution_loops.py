@@ -2,7 +2,7 @@
 from typing import List, Dict, Any, Generator, AsyncGenerator
 from .handlers import AbstractProviderHandler
 from .tool_execution import execute_tools, execute_tools_async
-from .utils import filter_toolflow_params, prepare_tool_schemas, prepare_response_format
+from .utils import filter_toolflow_params
 
 def sync_execution_loop(
     handler: AbstractProviderHandler,
@@ -15,7 +15,7 @@ def sync_execution_loop(
     tools = kwargs.get("tools", [])
     messages = kwargs.get("messages", [])
     response_format = kwargs.get("response_format", None)
-    tool_schemas, tool_map, pydantic_model = prepare_tool_schemas(tools, handler)
+    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     
     for _ in range(max_tool_calls):
         response = handler.call_api(messages=messages, tools=tool_schemas, **kwargs)
@@ -58,8 +58,8 @@ async def async_execution_loop(
         text, _, raw_response = handler.handle_response(response)
         return raw_response if full_response else text
 
-    tool_schemas, tool_map = prepare_tool_schemas(tools, handler)
-    response_format_tool = prepare_response_format(response_format, handler)
+    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    response_format_tool = handler.prepare_response_format(response_format)
     if response_format_tool:
         tool_schemas.append(response_format_tool)
     
@@ -74,8 +74,9 @@ async def async_execution_loop(
         if response_format_tool:
             for tool_call in tool_calls:
                 if tool_call["function"]["name"] == response_format_tool["function"]["name"]:
-                    # Need to implement a retry mechanism here if the response is not valid
-                    return response_format.model_validate_json(text)
+                    # Extract the structured data from the tool call arguments
+                    parsed = handler.parse_structured_output(tool_call, response_format)
+                    return raw_response if full_response else parsed
 
         # Add assistant message with tool calls to conversation
         kwargs["messages"].append(handler.create_assistant_message(text, tool_calls))
@@ -83,10 +84,7 @@ async def async_execution_loop(
         tool_results = await execute_tools_async(tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
         kwargs["messages"].extend(handler.create_tool_result_messages(tool_results))
 
-    # Final call after max tool calls
-    response = await handler.call_api_async(**kwargs)
-    text, _, raw_response = handler.handle_response(response)
-    return raw_response if full_response else text
+    raise Exception("Max tool calls reached without a valid response")
 
 def sync_streaming_execution_loop(
     handler: AbstractProviderHandler,
@@ -95,7 +93,7 @@ def sync_streaming_execution_loop(
     **kwargs: Any,
 ) -> Generator[Any, None, None]:
     """Synchronous streaming execution loop."""
-    tool_schemas, tool_map, pydantic_model = prepare_tool_schemas(tools, handler)
+    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     
     response = handler.call_api(messages=messages, tools=tool_schemas, stream=True, **kwargs)
     
@@ -121,7 +119,7 @@ def async_streaming_execution_loop(
 ) -> AsyncGenerator[Any, None]:
     """Asynchronous streaming execution loop."""
     async def internal_generator():
-        tool_schemas, tool_map, pydantic_model = prepare_tool_schemas(tools, handler)
+        tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
         
         response = await handler.call_api_async(messages=messages, tools=tool_schemas, stream=True, **kwargs)
         

@@ -93,12 +93,6 @@ class OpenAIHandler(AbstractProviderHandler):
             })
         return messages
 
-    def create_tool_result_message(self, tool_results: List[Dict]) -> Dict:
-        return {
-            "role": "tool",
-            "content": json.dumps(tool_results),
-        }
-
     def _format_tool_call(self, tool_call: ChatCompletionMessageToolCall) -> Dict:
         return {
             "id": tool_call.id,
@@ -108,6 +102,3 @@ class OpenAIHandler(AbstractProviderHandler):
                 "arguments": json.loads(tool_call.function.arguments),
             },
         }
-    
-    def get_structured_output_tool(self, pydantic_model: Any) -> Dict:
-        return super().get_structured_output_tool(pydantic_model)
