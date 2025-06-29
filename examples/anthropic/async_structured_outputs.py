@@ -20,7 +20,7 @@ class FibonacciResponse(BaseModel):
 
 async def main():
     # Default behavior: simplified API (returns parsed data directly)
-    client = toolflow.from_anthropic_async(AsyncAnthropic())
+    client = toolflow.from_anthropic(AsyncAnthropic())        
 
     # Toolflow enhanced API - returns parsed data directly
     parsed_data = await client.messages.create(
@@ -35,7 +35,7 @@ async def main():
     print(isinstance(parsed_data, FibonacciResponse)) # Direct FibonacciResponse object
     
     # For full response access, use full_response=True
-    full_client = toolflow.from_anthropic_async(AsyncAnthropic(), full_response=True)
+    full_client = toolflow.from_anthropic(AsyncAnthropic(), full_response=True)
     response = await full_client.messages.create(
         model="claude-3-5-haiku-latest",
         max_tokens=1024,

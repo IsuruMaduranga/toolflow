@@ -2,7 +2,7 @@
 from typing import List, Dict, Any, Generator, AsyncGenerator
 from .handlers import AbstractProviderHandler
 from .tool_execution import execute_tools, execute_tools_async
-from .utils import filter_toolflow_params
+from .utils import filter_toolflow_params, RESPONSE_FORMAT_TOOL_NAME
 
 def sync_execution_loop(
     handler: AbstractProviderHandler,
@@ -24,11 +24,12 @@ def sync_execution_loop(
         response = handler.call_api(messages=messages, **kwargs)
         text, _, raw_response = handler.handle_response(response)
         return raw_response if full_response else text
-
-    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
-    response_format_tool = handler.prepare_response_format(response_format)
+    
+    response_format_tool = handler.get_response_format_tool(response_format)
     if response_format_tool:
-        tool_schemas.append(response_format_tool)
+        tools.append(response_format_tool)
+    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
     kwargs["tools"] = tool_schemas
     for _ in range(max_tool_calls):
@@ -40,7 +41,7 @@ def sync_execution_loop(
         
         if response_format_tool:
             for tool_call in tool_calls:
-                if tool_call["function"]["name"] == response_format_tool["function"]["name"]:
+                if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                     # Extract the structured data from the tool call arguments
                     parsed = handler.parse_structured_output(tool_call, response_format)
                     return raw_response if full_response else parsed
@@ -71,11 +72,12 @@ async def async_execution_loop(
         response = await handler.call_api_async(**kwargs)
         text, _, raw_response = handler.handle_response(response)
         return raw_response if full_response else text
-
-    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
-    response_format_tool = handler.prepare_response_format(response_format)
+    
+    response_format_tool = handler.get_response_format_tool(response_format)
     if response_format_tool:
-        tool_schemas.append(response_format_tool)
+        tools.append(response_format_tool)
+    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
     kwargs["tools"] = tool_schemas
     for _ in range(max_tool_calls):
@@ -87,7 +89,7 @@ async def async_execution_loop(
         
         if response_format_tool:
             for tool_call in tool_calls:
-                if tool_call["function"]["name"] == response_format_tool["function"]["name"]:
+                if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                     # Extract the structured data from the tool call arguments
                     parsed = handler.parse_structured_output(tool_call, response_format)
                     return raw_response if full_response else parsed
@@ -126,10 +128,11 @@ def sync_streaming_execution_loop(
         return
     
     # Prepare tools for tool calling
-    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
-    response_format_tool = handler.prepare_response_format(response_format)
+    response_format_tool = handler.get_response_format_tool(response_format)
     if response_format_tool:
-        tool_schemas.append(response_format_tool)
+        tools.append(response_format_tool)
+    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
     kwargs["tools"] = tool_schemas
     remaining_tool_calls = max_tool_calls
@@ -162,7 +165,7 @@ def sync_streaming_execution_loop(
             if response_format_tool:
                 # Handle structured output
                 for tool_call in accumulated_tool_calls:
-                    if tool_call["function"]["name"] == response_format_tool["function"]["name"]:
+                    if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                         parsed = handler.parse_structured_output(tool_call, response_format)
                         # For structured output, we don't continue streaming
                         return parsed if not full_response else {"parsed": parsed}
@@ -212,10 +215,11 @@ def async_streaming_execution_loop(
             return
         
         # Prepare tools for tool calling
-        tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
-        response_format_tool = handler.prepare_response_format(response_format)
+        response_format_tool = handler.get_response_format_tool(response_format)
         if response_format_tool:
-            tool_schemas.append(response_format_tool)
+            tools.append(response_format_tool)
+        tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+        tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
         
         kwargs["tools"] = tool_schemas
         remaining_tool_calls = max_tool_calls
@@ -248,7 +252,7 @@ def async_streaming_execution_loop(
                 if response_format_tool:
                     # Handle structured output
                     for tool_call in accumulated_tool_calls:
-                        if tool_call["function"]["name"] == response_format_tool["function"]["name"]:
+                        if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                             parsed = handler.parse_structured_output(tool_call, response_format)
                             # For structured output, we don't continue streaming
                             yield parsed if not full_response else {"parsed": parsed}

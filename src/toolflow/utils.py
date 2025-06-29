@@ -1,38 +1,8 @@
-# src/toolflow/core/utils.py
-from typing import Dict, Any, List
-from .constants import DEFAULT_PARAMS, RESPONSE_FORMAT_TOOL_NAME
 import inspect
 from typing import Callable, Annotated, get_origin, get_args, Any
 from pydantic import BaseModel, create_model, Field
 from pydantic.fields import FieldInfo
 from docstring_parser import parse
-
-def filter_toolflow_params(**kwargs) -> tuple[Dict[str, Any], int, bool, Any, bool, bool]:
-    """Extract toolflow-specific params and return as easily unpackable tuple."""
-    filtered_kwargs = kwargs.copy()
-    
-    # Default values for toolflow params
-    max_tool_calls = filtered_kwargs.pop("max_tool_calls", DEFAULT_PARAMS["max_tool_calls"])
-    parallel_tool_execution = filtered_kwargs.pop("parallel_tool_execution", DEFAULT_PARAMS["parallel_tool_execution"])
-    response_format = filtered_kwargs.pop("response_format", DEFAULT_PARAMS["response_format"])
-    full_response = filtered_kwargs.pop("full_response", DEFAULT_PARAMS["full_response"])
-    graceful_error_handling = filtered_kwargs.pop("graceful_error_handling", DEFAULT_PARAMS["graceful_error_handling"])
-    
-    # Return a tuple of the filtered kwargs and toolflow params
-    return filtered_kwargs, max_tool_calls, parallel_tool_execution, response_format, full_response, graceful_error_handling
-
-def get_structured_output_tool(pydantic_model: Any) -> Callable:
-    """Get the tool definition for structured output."""
-    def final_response_tool_internal(response: pydantic_model) -> str:
-        pass
-
-    final_response_tool_internal.__name__ = RESPONSE_FORMAT_TOOL_NAME
-    final_response_tool_internal.__doc__ = f"""
-    You must call this tool to provide your final response.
-    Because user expects the final response in `{pydantic_model.__name__}` format.
-    This tool must be your last tool call.
-    """
-    return final_response_tool_internal
 
 def get_tool_schema(
     func: Callable,

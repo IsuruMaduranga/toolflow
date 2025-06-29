@@ -7,7 +7,7 @@ def get_weather(location: str) -> str:
     """Get the current weather in a given location"""
     return f"Weather in {location}: Sunny, 72°F"
 
-client = toolflow.from_anthropic_async(AsyncAnthropic())
+client = toolflow.from_anthropic(AsyncAnthropic())
 
 async def main():
     
@@ -22,7 +22,7 @@ async def main():
     async for content in stream:
         print(content, end="", flush=True)
 
-    client_full = toolflow.from_anthropic_async(AsyncAnthropic(), full_response=True)
+    client_full = toolflow.from_anthropic(AsyncAnthropic(), full_response=True)
     stream = await client_full.messages.create(
         model="claude-3-5-haiku-latest", 
         messages=[{"role": "user", "content": "What's the weather in NYC?"}],

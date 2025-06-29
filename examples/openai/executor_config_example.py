@@ -70,7 +70,7 @@ def example_3_custom_executor():
     )
     
     # Set custom executor (used by both sync and async)
-    toolflow.set_global_executor(custom_executor)
+    toolflow.set_executor(custom_executor)
     
     client = toolflow.from_openai(OpenAI())
     
@@ -110,7 +110,7 @@ async def example_5_async_with_global_executor():
         max_workers=10,
         thread_name_prefix="shared-executor-"
     )
-    toolflow.set_global_executor(custom_executor)
+    toolflow.set_executor(custom_executor)
     
     client = toolflow.from_openai_async(AsyncOpenAI())
     

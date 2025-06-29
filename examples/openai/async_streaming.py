@@ -63,7 +63,7 @@ async def async_fetch_url(url: str) -> str:
         return f"Error fetching {url}: {str(e)}"
 
 async def main():
-    client = toolflow.from_openai_async(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
+    client = toolflow.from_openai(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
     print("=== Toolflow Async Streaming Example ===\n")
     

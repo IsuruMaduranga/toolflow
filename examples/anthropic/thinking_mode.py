@@ -164,7 +164,7 @@ async def async_thinking():
     print("-" * 15)
     
     import anthropic
-    client = toolflow.from_anthropic_async(anthropic.AsyncAnthropic())
+    client = toolflow.from_anthropic(anthropic.AsyncAnthropic())
     
     response = await client.messages.create(
         model="claude-3-7-sonnet-20250219",

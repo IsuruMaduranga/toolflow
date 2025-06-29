@@ -69,7 +69,7 @@ async def main():
     
     # Create async OpenAI client (you'll need to set your API key)
     # Default behavior: simplified API (returns content directly)
-    client = toolflow.from_openai_async(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
+    client = toolflow.from_openai(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
     
     # Using async client with a sync tool
     content = await client.chat.completions.create(
