@@ -61,6 +61,38 @@ class OpenAIHandler(AbstractProviderHandler):
             
             yield text, None, chunk
 
+    def create_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
+        """Create an assistant message with tool calls for OpenAI format."""
+        message = {
+            "role": "assistant",
+            "content": text,
+        }
+        if tool_calls:
+            # Convert tool calls back to OpenAI format
+            openai_tool_calls = []
+            for tc in tool_calls:
+                openai_tool_calls.append({
+                    "id": tc["id"],
+                    "type": tc["type"],
+                    "function": {
+                        "name": tc["function"]["name"],
+                        "arguments": json.dumps(tc["function"]["arguments"])
+                    }
+                })
+            message["tool_calls"] = openai_tool_calls
+        return message
+
+    def create_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
+        """Create individual tool result messages for OpenAI format."""
+        messages = []
+        for result in tool_results:
+            messages.append({
+                "role": "tool",
+                "tool_call_id": result["tool_call_id"],
+                "content": str(result["output"])
+            })
+        return messages
+
     def create_tool_result_message(self, tool_results: List[Dict]) -> Dict:
         return {
             "role": "tool",

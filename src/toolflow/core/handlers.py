@@ -37,8 +37,13 @@ class AbstractProviderHandler(ABC):
         pass
     
     @abstractmethod
-    def create_tool_result_message(self, tool_results: List[Dict]) -> Dict:
-        """Create a tool result message for the provider."""
+    def create_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
+        """Create an assistant message with tool calls for the conversation."""
+        pass
+    
+    @abstractmethod
+    def create_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
+        """Create tool result messages for the conversation."""
         pass
 
     @abstractmethod

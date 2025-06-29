@@ -26,8 +26,11 @@ def sync_execution_loop(
                 return pydantic_model.model_validate_json(text)
             return raw_response if kwargs.get("full_response") else text
 
+        # Add assistant message with tool calls to conversation
+        messages.append(handler.create_assistant_message(text, tool_calls))
+        
         tool_results = execute_tools(tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
-        messages.append(handler.create_tool_result_message(tool_results))
+        messages.extend(handler.create_tool_result_messages(tool_results))
 
     # Final call after max tool calls
     response = handler.call_api(messages=messages, tools=tool_schemas, **kwargs)
@@ -74,8 +77,16 @@ async def async_execution_loop(
                     # Need to implement a retry mechanism here if the response is not valid
                     return response_format.model_validate_json(text)
 
+        # Add assistant message with tool calls to conversation
+        kwargs["messages"].append(handler.create_assistant_message(text, tool_calls))
+        
         tool_results = await execute_tools_async(tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
-        kwargs["messages"].append(handler.create_tool_result_message(tool_results))
+        kwargs["messages"].extend(handler.create_tool_result_messages(tool_results))
+
+    # Final call after max tool calls
+    response = await handler.call_api_async(**kwargs)
+    text, _, raw_response = handler.handle_response(response)
+    return raw_response if full_response else text
 
 def sync_streaming_execution_loop(
     handler: AbstractProviderHandler,
