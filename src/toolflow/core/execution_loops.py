@@ -12,8 +12,7 @@ def sync_execution_loop(
 
     (kwargs,
      max_tool_calls,
-     parallel_tool_execution,   
-     max_workers,
+     parallel_tool_execution,
      response_format,
      full_response) = filter_toolflow_params(**kwargs)
     
@@ -48,7 +47,7 @@ def sync_execution_loop(
         # Add assistant message with tool calls to conversation
         messages.append(handler.create_assistant_message(text, tool_calls))
         
-        tool_results = execute_tools(tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
+        tool_results = execute_tools(tool_calls, tool_map, parallel_tool_execution)
         messages.extend(handler.create_tool_result_messages(tool_results))
 
     raise Exception("Max tool calls reached without a valid response")
@@ -61,8 +60,7 @@ async def async_execution_loop(
 
     (kwargs,
      max_tool_calls,
-     parallel_tool_execution,   
-     max_workers,
+     parallel_tool_execution,
      response_format,
      full_response) = filter_toolflow_params(**kwargs)
     
@@ -95,7 +93,7 @@ async def async_execution_loop(
         # Add assistant message with tool calls to conversation
         kwargs["messages"].append(handler.create_assistant_message(text, tool_calls))
         
-        tool_results = await execute_tools_async(tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
+        tool_results = await execute_tools_async(tool_calls, tool_map)
         kwargs["messages"].extend(handler.create_tool_result_messages(tool_results))
 
     raise Exception("Max tool calls reached without a valid response")
@@ -107,8 +105,7 @@ def sync_streaming_execution_loop(
     """Synchronous streaming execution loop with tool calling support."""
     (kwargs,
      max_tool_calls,
-     parallel_tool_execution,   
-     max_workers,
+     parallel_tool_execution,
      response_format,
      full_response) = filter_toolflow_params(**kwargs)
     
@@ -171,7 +168,7 @@ def sync_streaming_execution_loop(
             messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
             
             # Execute tools
-            tool_results = execute_tools(accumulated_tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
+            tool_results = execute_tools(accumulated_tool_calls, tool_map, parallel_tool_execution)
             messages.extend(handler.create_tool_result_messages(tool_results))
             
             # Update kwargs with new messages for next iteration
@@ -194,8 +191,7 @@ def async_streaming_execution_loop(
     """Asynchronous streaming execution loop with tool calling support."""
     (kwargs,
     max_tool_calls,
-    parallel_tool_execution,   
-    max_workers,
+    parallel_tool_execution,
     response_format,
     full_response) = filter_toolflow_params(**kwargs)
 
@@ -229,15 +225,15 @@ def async_streaming_execution_loop(
             
             # Process the streaming response
             async for text, partial_tool_calls, chunk in handler.handle_streaming_response_async(response):
-                # Yield content immediately for streaming experience
+                # Accumulate content for tool calls
                 if text:
                     accumulated_content += text
-                    if not full_response:
-                        yield text
-                    else:
-                        yield chunk
-                elif full_response:
+                
+                # Yield based on full_response setting
+                if full_response:
                     yield chunk
+                elif text:
+                    yield text
                 
                 # Accumulate tool calls (they come at the end of streaming)
                 if partial_tool_calls:
@@ -258,7 +254,7 @@ def async_streaming_execution_loop(
                 messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
                 
                 # Execute tools
-                tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
+                tool_results = await execute_tools_async(accumulated_tool_calls, tool_map)
                 messages.extend(handler.create_tool_result_messages(tool_results))
                 
                 # Update kwargs with new messages for next iteration
@@ -273,5 +269,5 @@ def async_streaming_execution_loop(
         
         if remaining_tool_calls <= 0:
             raise Exception("Max tool calls reached without a valid response")
-                
+    
     return internal_generator()

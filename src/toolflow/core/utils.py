@@ -7,19 +7,18 @@ from pydantic import BaseModel, create_model, Field
 from pydantic.fields import FieldInfo
 from docstring_parser import parse
 
-def filter_toolflow_params(**kwargs) -> tuple[Dict[str, Any], int, bool, int | None, Any, bool]:
+def filter_toolflow_params(**kwargs) -> tuple[Dict[str, Any], int, bool, Any, bool]:
     """Extract toolflow-specific params and return as easily unpackable tuple."""
     filtered_kwargs = kwargs.copy()
     
     # Default values for toolflow params
     max_tool_calls = filtered_kwargs.pop("max_tool_calls", DEFAULT_PARAMS["max_tool_calls"])
     parallel_tool_execution = filtered_kwargs.pop("parallel_tool_execution", DEFAULT_PARAMS["parallel_tool_execution"])
-    max_workers = filtered_kwargs.pop("max_workers", DEFAULT_PARAMS["max_workers"])
     response_format = filtered_kwargs.pop("response_format", DEFAULT_PARAMS["response_format"])
     full_response = filtered_kwargs.pop("full_response", DEFAULT_PARAMS["full_response"])
     
     # Return a tuple of the filtered kwargs and toolflow params
-    return filtered_kwargs, max_tool_calls, parallel_tool_execution, max_workers, response_format, full_response
+    return filtered_kwargs, max_tool_calls, parallel_tool_execution, response_format, full_response
 
 def get_structured_output_tool(pydantic_model: Any) -> Dict:
     """Get the tool definition for structured output."""
