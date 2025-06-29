@@ -11,118 +11,61 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-
-def from_openai(client: "openai.OpenAI", full_response: bool = False) -> "OpenAIWrapper":
+def from_openai(client, full_response: bool = False):
     """
     Create a toolflow wrapper around an existing OpenAI client.
     
+    Automatically detects whether the client is synchronous (OpenAI) or 
+    asynchronous (AsyncOpenAI) and returns the appropriate wrapper.
+    
     Args:
-        client: An existing OpenAI client instance
+        client: An existing OpenAI client instance (OpenAI or AsyncOpenAI)
         full_response: If True, return the full OpenAI response object. 
                       If False (default), return only the content or parsed data.
     
     Returns:
-        OpenAIWrapper that supports tool-py decorated functions
+        OpenAIWrapper or AsyncOpenAIWrapper that supports tool-py decorated functions
     
     Example:
         import openai
         import toolflow
         
-        # Full response mode (default behavior)
+        # Synchronous client
+        sync_client = toolflow.from_openai(openai.OpenAI())
+        content = sync_client.chat.completions.create(...)
+        
+        # Asynchronous client
+        async_client = toolflow.from_openai(openai.AsyncOpenAI())
+        content = await async_client.chat.completions.create(...)
+        
+        # Full response mode
         client = toolflow.from_openai(openai.OpenAI(), full_response=True)
         response = client.chat.completions.create(...)
         content = response.choices[0].message.content
-        
-        # Simplified response mode (new behavior)
-        client = toolflow.from_openai(openai.OpenAI(), full_response=False)
-        content = client.chat.completions.create(...)  # Returns only content
-        
-        # For structured outputs with simplified mode
-        parsed_data = client.chat.completions.parse(...)  # Returns only parsed data
     """
     if not OPENAI_AVAILABLE:
         raise ImportError("OpenAI library not installed. Install with: pip install openai")
     
-    # Validate client type
     # Allow Mock objects for testing
     if hasattr(client, '_mock_name') or client.__class__.__name__ == 'Mock':
-        # This is a mock object, allow it for testing
-        pass
-    elif not isinstance(client, openai.OpenAI):
+        # This is a mock object, assume sync wrapper for testing
+        return OpenAIWrapper(client, full_response)
+    
+    # Detect client type and return appropriate wrapper
+    if isinstance(client, openai.AsyncOpenAI):
+        return AsyncOpenAIWrapper(client, full_response)
+    elif isinstance(client, openai.OpenAI):
+        return OpenAIWrapper(client, full_response)
+    else:
+        # Provide helpful error message
         if hasattr(client, '__class__'):
             client_type = client.__class__.__name__
-            if client_type == "AsyncOpenAI":
-                raise TypeError(
-                    f"Expected synchronous OpenAI client, got AsyncOpenAI. "
-                    f"Use toolflow.from_openai_async() for AsyncOpenAI clients."
-                )
-            else:
-                raise TypeError(
-                    f"Expected openai.OpenAI client, got {client_type}. "
-                    f"Please pass a valid OpenAI() client instance."
-                )
+            raise TypeError(
+                f"Expected openai.OpenAI or openai.AsyncOpenAI client, got {client_type}. "
+                f"Please pass a valid OpenAI() or AsyncOpenAI() client instance."
+            )
         else:
             raise TypeError(
-                f"Expected openai.OpenAI client, got {type(client)}. "
-                f"Please pass a valid OpenAI() client instance."
+                f"Expected openai.OpenAI or openai.AsyncOpenAI client, got {type(client)}. "
+                f"Please pass a valid OpenAI() or AsyncOpenAI() client instance."
             )
-    
-    return OpenAIWrapper(client, full_response)
-
-
-def from_openai_async(client: "openai.AsyncOpenAI", full_response: bool = False) -> "AsyncOpenAIWrapper":
-    """
-    Create a toolflow wrapper around an existing OpenAI async client.
-    
-    Args:
-        client: An existing OpenAI async client instance
-        full_response: If True, return the full OpenAI response object.
-                      If False (default), return only the content or parsed data.
-    
-    Returns:
-        AsyncOpenAIWrapper that supports tool-py decorated functions
-    
-    Example:
-        import openai
-        import toolflow
-        
-        # Full response mode
-        client = toolflow.from_openai_async(openai.AsyncOpenAI(), full_response=True)
-        response = await client.chat.completions.create(...)
-        content = response.choices[0].message.content
-        
-        # Simplified response mode (default)
-        client = toolflow.from_openai_async(openai.AsyncOpenAI(), full_response=False)
-        content = await client.chat.completions.create(...)  # Returns only content
-        
-        # For structured outputs with simplified mode
-        parsed_data = await client.chat.completions.parse(...)  # Returns only parsed data
-    """
-    if not OPENAI_AVAILABLE:
-        raise ImportError("OpenAI library not installed. Install with: pip install openai")
-    
-    # Validate client type
-    # Allow Mock objects for testing
-    if hasattr(client, '_mock_name') or client.__class__.__name__ == 'Mock':
-        # This is a mock object, allow it for testing
-        pass
-    elif not isinstance(client, openai.AsyncOpenAI):
-        if hasattr(client, '__class__'):
-            client_type = client.__class__.__name__
-            if client_type == "OpenAI":
-                raise TypeError(
-                    f"Expected asynchronous AsyncOpenAI client, got OpenAI. "
-                    f"Use toolflow.from_openai() for synchronous OpenAI clients."
-                )
-            else:
-                raise TypeError(
-                    f"Expected openai.AsyncOpenAI client, got {client_type}. "
-                    f"Please pass a valid AsyncOpenAI() client instance."
-                )
-        else:
-            raise TypeError(
-                f"Expected openai.AsyncOpenAI client, got {type(client)}. "
-                f"Please pass a valid AsyncOpenAI() client instance."
-            )
-    
-    return AsyncOpenAIWrapper(client, full_response)
