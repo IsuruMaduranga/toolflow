@@ -1,14 +1,7 @@
-"""
-Example demonstrating async client usage with toolflow.
-
-This example shows how to use the async OpenAI client wrapper
-with both synchronous and asynchronous tool functions.
-"""
-
-import asyncio
 import openai
 import toolflow
 import os
+import time
 
 @toolflow.tool(name="sync_calculator")
 def sync_calculator(operation: str, a: float, b: float) -> float:
@@ -32,14 +25,14 @@ def sync_calculator(operation: str, a: float, b: float) -> float:
 
 
 @toolflow.tool
-async def async_database_query(query: str) -> str:
+def sync_database_query(query: str) -> str:
     """Give your SQL query to the database and get the result.
     Two tables are available: users and orders.
     users table has the following columns: id, name, email, age
     orders table has the following columns: id, user_id, amount, date
     """
     # Simulate async database operation
-    await asyncio.sleep(0.1)
+    time.sleep(0.1)
     
     if "users" in query.lower():
         return "Found 42 users in the database"
@@ -50,47 +43,39 @@ async def async_database_query(query: str) -> str:
 
 
 @toolflow.tool
-async def async_api_call(endpoint: str) -> str:
+def sync_api_call(endpoint: str) -> str:
     """Simulate an async API call."""
     # Simulate async API call
-    await asyncio.sleep(0.2)
+    time.sleep(0.2)
     
     return f"API response from {endpoint}: Status 200 OK"
 
 
-async def main():
+def main():
     """Main async function demonstrating the async client."""
     
     # Create async OpenAI client (you'll need to set your API key)
     # Default behavior: simplified API (returns content directly)
-    client = toolflow.from_openai_async(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
+    client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
     
     # Using async client with a sync tool
-    content = await client.chat.completions.create(
+    content = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
         tools=[sync_calculator],
         max_tool_calls=5,
     )
+
+    client.chat.completions.create()
     print(content)  # Direct string output
 
-    # # Using async client with an async tool
-    # content = await client.chat.completions.create(
-    #     model="gpt-4o-mini",
-    #     messages=[{"role": "user", "content": "How many users are there in the database?"}],
-    #     tools=[async_database_query],
-    #     max_tool_calls=5,
-    # )
-    # print(content)  # Direct string output
-
-    # # Using async client with a sync tool and an async tool
-    # content = await client.chat.completions.create(
-    #     model="gpt-4o-mini",
-    #     messages=[{"role": "user", "content": "Multiply orders by number of users"}],
-    #     tools=[sync_calculator, async_database_query],
-    #     max_tool_calls=5,
-    # )
-    # print(content)  # Direct string output
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
+        tools=[sync_calculator],
+        max_tool_calls=5,
+    )
+    main()

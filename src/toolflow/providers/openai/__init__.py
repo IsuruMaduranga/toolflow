@@ -3,7 +3,7 @@ OpenAI provider for toolflow.
 
 This module provides factory functions to create toolflow wrappers around OpenAI clients.
 """
-from .wrappers import OpenAIWrapper, OpenAIAsyncWrapper
+from .wrappers import OpenAIWrapper, AsyncOpenAIWrapper
 
 try:
     import openai
@@ -70,7 +70,7 @@ def from_openai(client: "openai.OpenAI", full_response: bool = False) -> "OpenAI
     return OpenAIWrapper(client, full_response)
 
 
-def from_openai_async(client: "openai.AsyncOpenAI", full_response: bool = False) -> "OpenAIAsyncWrapper":
+def from_openai_async(client: "openai.AsyncOpenAI", full_response: bool = False) -> "AsyncOpenAIWrapper":
     """
     Create a toolflow wrapper around an existing OpenAI async client.
     
@@ -80,7 +80,7 @@ def from_openai_async(client: "openai.AsyncOpenAI", full_response: bool = False)
                       If False (default), return only the content or parsed data.
     
     Returns:
-        OpenAIAsyncWrapper that supports tool-py decorated functions
+        AsyncOpenAIWrapper that supports tool-py decorated functions
     
     Example:
         import openai
@@ -125,4 +125,4 @@ def from_openai_async(client: "openai.AsyncOpenAI", full_response: bool = False)
                 f"Please pass a valid AsyncOpenAI() client instance."
             )
     
-    return OpenAIAsyncWrapper(client, full_response)
+    return AsyncOpenAIWrapper(client, full_response)
