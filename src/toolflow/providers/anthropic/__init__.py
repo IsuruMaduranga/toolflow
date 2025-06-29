@@ -3,7 +3,7 @@ Anthropic provider for toolflow.
 
 This module provides factory functions to create toolflow wrappers around Anthropic clients.
 """
-from .wrappers import AnthropicWrapper, AnthropicAsyncWrapper
+from .wrappers import AnthropicWrapper, AsyncAnthropicWrapper
 
 try:
     import anthropic
@@ -65,7 +65,7 @@ def from_anthropic(client, full_response: bool = False):
     
     # Detect client type and return appropriate wrapper
     if isinstance(client, anthropic.AsyncAnthropic):
-        return AnthropicAsyncWrapper(client, full_response)
+        return AsyncAnthropicWrapper(client, full_response)
     elif isinstance(client, anthropic.Anthropic):
         return AnthropicWrapper(client, full_response)
     else:
