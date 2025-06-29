@@ -66,16 +66,8 @@ def main():
         max_tool_calls=5,
     )
 
-    client.chat.completions.create()
     print(content)  # Direct string output
 
 
 if __name__ == "__main__":
-    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
-        tools=[sync_calculator],
-        max_tool_calls=5,
-    )
     main()

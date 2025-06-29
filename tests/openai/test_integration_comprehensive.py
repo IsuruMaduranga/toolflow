@@ -197,7 +197,6 @@ class TestEnhancedParameterHandling:
             messages=[{"role": "user", "content": "Test"}],
             tools=[test_tool],
             parallel_tool_execution=True,
-            max_workers=5,
             max_tool_calls=15
         )
 

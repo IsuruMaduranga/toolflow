@@ -5,116 +5,68 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Callable, Any, Coroutine, Optional
 
-# ===== SYNC TOOL EXECUTION CONFIGURATION =====
+# ===== GLOBAL EXECUTOR (SHARED BY SYNC AND ASYNC) =====
 
-# Global configuration for sync tool execution
-_DEFAULT_SYNC_MAX_WORKERS = 4
-_sync_global_executor: Optional[ThreadPoolExecutor] = None
-_sync_executor_lock = threading.Lock()
+_custom_executor: Optional[ThreadPoolExecutor] = None
+_global_executor: Optional[ThreadPoolExecutor] = None
+_executor_lock = threading.Lock()
+_MAX_WORKERS = 4
 
-def get_default_sync_max_workers() -> int:
-    """Get the default max workers for sync tool execution."""
-    return int(os.getenv("TOOLFLOW_SYNC_MAX_WORKERS", _DEFAULT_SYNC_MAX_WORKERS))
+def set_max_workers(max_workers: int) -> None:
+    """Set the number of worker threads for the global executor."""
+    global _global_executor
+    global _MAX_WORKERS
+    _MAX_WORKERS = max_workers
+    with _executor_lock:
+        if _global_executor:
+            _global_executor.shutdown(wait=True)
+            _global_executor = None
 
-def set_max_workers_sync(max_workers: int) -> None:
-    """Set the number of worker threads for sync tool execution."""
-    global _sync_global_executor
-    with _sync_executor_lock:
-        if _sync_global_executor:
-            _sync_global_executor.shutdown(wait=True)
-        _sync_global_executor = ThreadPoolExecutor(
-            max_workers=max_workers,
-            thread_name_prefix="toolflow-sync-"
-        )
+def get_max_workers() -> int:
+    """Get the number of worker threads for the global executor."""
+    return _MAX_WORKERS if _MAX_WORKERS else int(os.getenv("TOOLFLOW_SYNC_MAX_WORKERS", 4))
 
-def set_global_executor_sync(executor: ThreadPoolExecutor) -> None:
-    """Set a custom global executor for sync tool execution."""
-    global _sync_global_executor
-    with _sync_executor_lock:
-        if _sync_global_executor:
-            _sync_global_executor.shutdown(wait=True)
-        _sync_global_executor = executor
+def set_executor(executor: ThreadPoolExecutor) -> None:
+    """Set a custom global executor (used by both sync and async)."""
+    global _global_executor
+    global _custom_executor
+    with _executor_lock:
+        if _global_executor:
+            _global_executor.shutdown(wait=True) 
+        if _custom_executor:
+            _custom_executor.shutdown(wait=True)
+        _custom_executor = executor
 
-def get_sync_executor() -> ThreadPoolExecutor:
-    """Get the executor for sync tool execution."""
-    global _sync_global_executor
-    if _sync_global_executor is None:
-        with _sync_executor_lock:
-            if _sync_global_executor is None:
-                max_workers = get_default_sync_max_workers()
-                _sync_global_executor = ThreadPoolExecutor(
-                    max_workers=max_workers,
-                    thread_name_prefix="toolflow-sync-"
-                )
-    return _sync_global_executor
-
-def cleanup_sync_executor():
-    """Shutdown and cleanup the sync global executor."""
-    global _sync_global_executor
-    with _sync_executor_lock:
-        if _sync_global_executor:
-            _sync_global_executor.shutdown(wait=True)
-            _sync_global_executor = None
-
-# ===== ASYNC TOOL EXECUTION CONFIGURATION =====
-
-# Global configuration for async tool execution
-_async_global_executor: Optional[ThreadPoolExecutor] = None
-_async_executor_lock = threading.Lock()
-
-def set_max_workers_async(max_workers: int) -> None:
+def _get_sync_executor() -> ThreadPoolExecutor:
+    """Get the executor for sync tool execution.
+    Returns the custom executor if set, otherwise the global executor.
     """
-    Set the number of worker threads for async tool execution.
-    Note: This is ignored if using asyncio's default executor.
-    Only has effect if you've set a custom async executor.
-    """
-    global _async_global_executor
-    with _async_executor_lock:
-        if _async_global_executor:
-            # Only update if we have a custom executor, don't create one
-            # if user is using asyncio's default
-            _async_global_executor.shutdown(wait=True)
-            _async_global_executor = ThreadPoolExecutor(
+    global _global_executor
+    global _custom_executor
+    
+    with _executor_lock:
+        if _global_executor is None and _custom_executor is None:
+            max_workers = get_max_workers()
+            _global_executor = ThreadPoolExecutor(
                 max_workers=max_workers,
-                thread_name_prefix="toolflow-async-"
+                thread_name_prefix="toolflow-"
             )
+        return _custom_executor if _custom_executor else _global_executor
 
-def set_global_executor_async(executor: ThreadPoolExecutor) -> None:
-    """Set a custom global executor for async tool execution."""
-    global _async_global_executor
-    with _async_executor_lock:
-        if _async_global_executor:
-            _async_global_executor.shutdown(wait=True)
-        _async_global_executor = executor
-
-def get_async_executor() -> Optional[ThreadPoolExecutor]:
+def _get_async_executor() -> Optional[ThreadPoolExecutor]:
     """
     Get the executor for async tool execution.
-    Returns None if using asyncio's default executor.
+    Returns the custom executor if set, otherwise None (uses asyncio's default).
     """
-    return _async_global_executor
-
-def cleanup_async_executor():
-    """Shutdown and cleanup the async global executor."""
-    global _async_global_executor
-    with _async_executor_lock:
-        if _async_global_executor:
-            _async_global_executor.shutdown(wait=True)
-            _async_global_executor = None
-
-# ===== UNIFIED CLEANUP =====
-
-def cleanup_executors():
-    """Shutdown and cleanup all global executors."""
-    cleanup_sync_executor()
-    cleanup_async_executor()
+    with _executor_lock:
+        return _custom_executor
 
 # ===== TOOL EXECUTION FUNCTIONS =====
 
 def execute_tools(
     tool_calls: List[Dict],
     tool_map: Dict[str, Callable],
-    parallel: bool = False,  # Changed default to False for playground-friendliness
+    parallel: bool = False,
     graceful_error_handling: bool = True
 ) -> List[Dict]:
     """
@@ -123,13 +75,8 @@ def execute_tools(
     Args:
         tool_calls: List of tool calls to execute
         tool_map: Mapping of tool names to functions
-        parallel: If True, use global sync thread pool; if False, execute sequentially
+        parallel: If True, use global thread pool; if False, execute sequentially
         graceful_error_handling: If True, return error messages; if False, raise exceptions
-    
-    The global sync thread pool defaults to 4 threads and can be configured via:
-    - TOOLFLOW_SYNC_MAX_WORKERS environment variable
-    - set_max_workers_sync() function
-    - set_global_executor_sync() function
     """
     if not tool_calls:
         return []
@@ -138,8 +85,8 @@ def execute_tools(
         # Sequential execution (default for playground use)
         return [_run_sync_tool(tool_call, tool_map[tool_call["function"]["name"]], graceful_error_handling) for tool_call in tool_calls]
     
-    # Parallel execution using global sync thread pool
-    executor = get_sync_executor()
+    # Parallel execution using global thread pool
+    executor = _get_sync_executor()
     future_to_tool_call = {
         executor.submit(
             _run_sync_tool,
@@ -167,10 +114,9 @@ async def execute_tools_async(
     
     - Async tools run concurrently using asyncio.gather()
     - Sync tools run in thread pool:
-        * Uses custom async executor if set via set_global_executor_async()
-        * Otherwise uses asyncio's default thread pool (recommended)
-    
-    Always executes tools concurrently for optimal async performance.
+        * Uses global executor if set via set_global_executor()
+        * Otherwise uses asyncio's default thread pool
+    - Always executes tools concurrently for optimal async performance
     
     Args:
         tool_calls: List of tool calls to execute
@@ -190,17 +136,15 @@ async def execute_tools_async(
             else:
                 sync_tool_calls.append(tool_call)
     
-    # Run sync tools using custom async executor or asyncio's default
+    # Run sync tools using custom executor or asyncio's default
     sync_results = []
     if sync_tool_calls:
         loop = asyncio.get_running_loop()
-        
-        # Use custom async executor if set, otherwise use asyncio's default (None)
-        executor = get_async_executor()
+        executor = _get_async_executor()  # Custom executor or None (asyncio default)
         
         futures = [
             loop.run_in_executor(
-                executor,  # Custom async executor or None (asyncio default)
+                executor,
                 _run_sync_tool,
                 call,
                 tool_map[call["function"]["name"]],

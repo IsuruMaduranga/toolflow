@@ -424,8 +424,7 @@ class TestComprehensiveWorkflow:
             }],
             tools=[simple_calculator, get_fibonacci, get_system_info, format_data],
             parallel_tool_execution=True,
-            max_tool_calls=8,
-            max_workers=4
+            max_tool_calls=8
         )
         
         assert response is not None

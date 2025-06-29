@@ -389,7 +389,6 @@ openai_client.chat.completions.create(
     response_format: Pydantic model,
     parallel_tool_execution: bool = False,
     max_tool_calls: int = 10,
-    max_workers: int = 10,
     graceful_error_handling: bool = True,
     full_response: bool = False,
 )
@@ -400,7 +399,6 @@ openai_client.chat.completions.create(
 - `response_format`: A Pydantic model for structured output.
 - `parallel_tool_execution`: If True, executes multiple tool calls concurrently.
 - `max_tool_calls`: A safety limit for the number of tool call rounds in a single turn.
-- `max_workers`: The maximum number of threads for running synchronous tools in parallel.
 - `graceful_error_handling`: If True (default), tool execution errors are passed to the model as error messages instead of raising exceptions.
 
 ## Development
