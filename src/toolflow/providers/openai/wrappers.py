@@ -55,9 +55,12 @@ class CompletionsWrapper:
     def create(self, *, stream=True, **kwargs: Any) -> Iterable[ChatCompletionChunk]: ...
 
     def create(self, **kwargs: Any) -> Any:
-        # merge full_response with kwargs
-        kwargs["full_response"] = self.full_response
+        # merge full_response with kwargs, but allow method-level override
+        if "full_response" not in kwargs:
+            kwargs["full_response"] = self.full_response
         if kwargs.get("stream", False):
+            if kwargs.get("response_format", None):
+                raise ValueError("response_format is not supported for streaming")
             return sync_streaming_execution_loop(handler=self.handler, **kwargs)
         else:
             return sync_execution_loop(handler=self.handler, **kwargs)
@@ -105,9 +108,12 @@ class AsyncCompletionsWrapper:
     async def create(self, *, stream=True, **kwargs: Any) -> AsyncIterable[ChatCompletionChunk]: ...
 
     async def create(self, **kwargs: Any) -> Any:
-        # merge full_response with kwargs
-        kwargs["full_response"] = self.full_response
+        # merge full_response with kwargs, but allow method-level override
+        if "full_response" not in kwargs:
+            kwargs["full_response"] = self.full_response
         if kwargs.get("stream", False):
+            if kwargs.get("response_format", None):
+                raise ValueError("response_format is not supported for streaming")
             return await async_streaming_execution_loop(handler=self.handler, **kwargs)
         else:
             return await async_execution_loop(handler=self.handler, **kwargs)

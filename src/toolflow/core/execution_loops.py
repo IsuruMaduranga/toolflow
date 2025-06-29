@@ -104,7 +104,7 @@ def sync_streaming_execution_loop(
     handler: AbstractProviderHandler,
     **kwargs: Any,
 ) -> Generator[Any, None, None]:
-    """Synchronous streaming execution loop."""
+    """Synchronous streaming execution loop with tool calling support."""
     (kwargs,
      max_tool_calls,
      parallel_tool_execution,   
@@ -112,24 +112,86 @@ def sync_streaming_execution_loop(
      response_format,
      full_response) = filter_toolflow_params(**kwargs)
     
-    response = handler.call_api(stream=True, **kwargs)
+    tools = kwargs.get("tools", [])
+    messages = kwargs.get("messages", [])
     
-    text_so_far = ""
-    for text, tool_calls, chunk in handler.handle_streaming_response(response):
-        if text:
-            text_so_far += text
-        if tool_calls:
-            # Streaming with tool calls is not yet supported in the core loop
-            # This part can be enhanced later
-            pass
+    # If no tools, just do simple streaming
+    if not tools:
+        response = handler.call_api(**kwargs)
+        for text, _, chunk in handler.handle_streaming_response(response):
+            if full_response:
+                yield chunk
+            elif text:
+                yield text
+        return
+    
+    # Prepare tools for tool calling
+    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    response_format_tool = handler.prepare_response_format(response_format)
+    if response_format_tool:
+        tool_schemas.append(response_format_tool)
+    
+    kwargs["tools"] = tool_schemas
+    remaining_tool_calls = max_tool_calls
+    
+    while remaining_tool_calls > 0:
+        # Stream the response
+        response = handler.call_api(**kwargs)
         
-        yield chunk if kwargs.get("full_response") else text
+        accumulated_content = ""
+        accumulated_tool_calls = []
+        
+        # Process the streaming response
+        for text, partial_tool_calls, chunk in handler.handle_streaming_response(response):
+            # Accumulate content for tool calls
+            if text:
+                accumulated_content += text
+            
+            # Yield based on full_response setting
+            if full_response:
+                yield chunk
+            elif text:
+                yield text
+            
+            # Accumulate tool calls (they come at the end of streaming)
+            if partial_tool_calls:
+                accumulated_tool_calls.extend(partial_tool_calls)
+        
+        # Check if we have tool calls to execute
+        if accumulated_tool_calls:
+            if response_format_tool:
+                # Handle structured output
+                for tool_call in accumulated_tool_calls:
+                    if tool_call["function"]["name"] == response_format_tool["function"]["name"]:
+                        parsed = handler.parse_structured_output(tool_call, response_format)
+                        # For structured output, we don't continue streaming
+                        return parsed if not full_response else {"parsed": parsed}
+            
+            # Add assistant message with tool calls to conversation
+            messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
+            
+            # Execute tools
+            tool_results = execute_tools(accumulated_tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
+            messages.extend(handler.create_tool_result_messages(tool_results))
+            
+            # Update kwargs with new messages for next iteration
+            kwargs["messages"] = messages
+            remaining_tool_calls -= 1
+            
+            # Continue the loop for next streaming response
+            continue
+        else:
+            # No tool calls, streaming is complete
+            break
+    
+    if remaining_tool_calls <= 0:
+        raise Exception("Max tool calls reached without a valid response")
 
 def async_streaming_execution_loop(
     handler: AbstractProviderHandler,
     **kwargs: Any,
 ) -> AsyncGenerator[Any, None]:
-    """Asynchronous streaming execution loop."""
+    """Asynchronous streaming execution loop with tool calling support."""
     async def internal_generator():
         (kwargs,
          max_tool_calls,
@@ -138,16 +200,77 @@ def async_streaming_execution_loop(
          response_format,
          full_response) = filter_toolflow_params(**kwargs)
         
-        response = await handler.call_api_async(stream=True, **kwargs)
+        tools = kwargs.get("tools", [])
+        messages = kwargs.get("messages", [])
         
-        text_so_far = ""
-        async for text, tool_calls, chunk in handler.handle_streaming_response_async(response):
-            if text:
-                text_so_far += text
-            if tool_calls:
-                 # Streaming with tool calls is not yet supported in the core loop
-                pass
-
-            yield chunk if kwargs.get("full_response") else text
+        # If no tools, just do simple streaming
+        if not tools:
+            response = await handler.call_api_async(**kwargs)
+            async for text, _, chunk in handler.handle_streaming_response_async(response):
+                yield chunk if full_response else text
+            return
+        
+        # Prepare tools for tool calling
+        tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+        response_format_tool = handler.prepare_response_format(response_format)
+        if response_format_tool:
+            tool_schemas.append(response_format_tool)
+        
+        kwargs["tools"] = tool_schemas
+        remaining_tool_calls = max_tool_calls
+        
+        while remaining_tool_calls > 0:
+            # Stream the response
+            response = await handler.call_api_async(**kwargs)
+            
+            accumulated_content = ""
+            accumulated_tool_calls = []
+            
+            # Process the streaming response
+            async for text, partial_tool_calls, chunk in handler.handle_streaming_response_async(response):
+                # Yield content immediately for streaming experience
+                if text:
+                    accumulated_content += text
+                    if not full_response:
+                        yield text
+                    else:
+                        yield chunk
+                elif full_response:
+                    yield chunk
+                
+                # Accumulate tool calls (they come at the end of streaming)
+                if partial_tool_calls:
+                    accumulated_tool_calls.extend(partial_tool_calls)
+            
+            # Check if we have tool calls to execute
+            if accumulated_tool_calls:
+                if response_format_tool:
+                    # Handle structured output
+                    for tool_call in accumulated_tool_calls:
+                        if tool_call["function"]["name"] == response_format_tool["function"]["name"]:
+                            parsed = handler.parse_structured_output(tool_call, response_format)
+                            # For structured output, we don't continue streaming
+                            yield parsed if not full_response else {"parsed": parsed}
+                            return
+                
+                # Add assistant message with tool calls to conversation
+                messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
+                
+                # Execute tools
+                tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, max_workers if parallel_tool_execution else 1)
+                messages.extend(handler.create_tool_result_messages(tool_results))
+                
+                # Update kwargs with new messages for next iteration
+                kwargs["messages"] = messages
+                remaining_tool_calls -= 1
+                
+                # Continue the loop for next streaming response
+                continue
+            else:
+                # No tool calls, streaming is complete
+                break
+        
+        if remaining_tool_calls <= 0:
+            raise Exception("Max tool calls reached without a valid response")
                 
     return internal_generator()

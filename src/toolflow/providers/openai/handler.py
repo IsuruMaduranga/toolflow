@@ -46,7 +46,21 @@ class OpenAIHandler(AbstractProviderHandler):
                         if tool_call_chunk.function.arguments:
                             tc["function"]["arguments"] += tool_call_chunk.function.arguments
             
-            yield text, None, chunk # Yielding partial tool calls is complex, handling at the end for now
+            yield text, None, chunk
+        
+        # After stream completes, yield tool calls if any were accumulated
+        if tool_calls:
+            # Parse JSON arguments for each tool call
+            formatted_tool_calls = []
+            for tc in tool_calls:
+                if tc["function"]["arguments"]:
+                    try:
+                        tc["function"]["arguments"] = json.loads(tc["function"]["arguments"])
+                    except json.JSONDecodeError:
+                        # If JSON parsing fails, keep as string
+                        pass
+                formatted_tool_calls.append(tc)
+            yield None, formatted_tool_calls, None
 
     async def handle_streaming_response_async(self, response: AsyncGenerator[ChatCompletionChunk, None]) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
         tool_calls = []
@@ -55,11 +69,34 @@ class OpenAIHandler(AbstractProviderHandler):
             text = delta.content
             
             if delta.tool_calls:
-                # Simplified streaming logic for this refactor
-                # A more robust implementation would properly accumulate and yield tool calls
-                pass
+                for tool_call_chunk in delta.tool_calls:
+                    if len(tool_calls) <= tool_call_chunk.index:
+                        tool_calls.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                    
+                    tc = tool_calls[tool_call_chunk.index]
+                    if tool_call_chunk.id:
+                        tc["id"] += tool_call_chunk.id
+                    if tool_call_chunk.function:
+                        if tool_call_chunk.function.name:
+                            tc["function"]["name"] += tool_call_chunk.function.name
+                        if tool_call_chunk.function.arguments:
+                            tc["function"]["arguments"] += tool_call_chunk.function.arguments
             
             yield text, None, chunk
+        
+        # After stream completes, yield tool calls if any were accumulated
+        if tool_calls:
+            # Parse JSON arguments for each tool call
+            formatted_tool_calls = []
+            for tc in tool_calls:
+                if tc["function"]["arguments"]:
+                    try:
+                        tc["function"]["arguments"] = json.loads(tc["function"]["arguments"])
+                    except json.JSONDecodeError:
+                        # If JSON parsing fails, keep as string
+                        pass
+                formatted_tool_calls.append(tc)
+            yield None, formatted_tool_calls, None
 
     def create_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
         """Create an assistant message with tool calls for OpenAI format."""
