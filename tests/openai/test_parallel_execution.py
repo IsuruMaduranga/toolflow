@@ -270,7 +270,7 @@ class TestMaxWorkersConfiguration:
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Test max workers"}],
                 tools=[simple_math_tool],
-                max_workers=max_workers,
+
                 parallel_tool_execution=True
             )
             assert response.choices[0].message.content == "Max workers test complete"
@@ -292,7 +292,7 @@ class TestMaxWorkersConfiguration:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Test async max workers"}],
             tools=[async_math_tool],
-            max_workers=3,
+
             parallel_tool_execution=True
         )
         

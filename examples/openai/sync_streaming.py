@@ -66,74 +66,74 @@ def main():
 
     print("=== Toolflow Sync Streaming Example ===\n")
     
-    # Example 1: Simple sync streaming without tools (default: content only)
-    print("1. Simple sync streaming without tools (default: content only):")
-    print("Question: Write a haiku about programming.")
-    print("Response: ", end="", flush=True)
+    # # Example 1: Simple sync streaming without tools (default: content only)
+    # print("1. Simple sync streaming without tools (default: content only):")
+    # print("Question: Write a haiku about programming.")
+    # print("Response: ", end="", flush=True)
     
-    stream = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Write a haiku about programming."}],
-        stream=True  # Default: full_response=False, yields content only
-    )
+    # stream = client.chat.completions.create(
+    #     model="gpt-4o-mini",
+    #     messages=[{"role": "user", "content": "Write a haiku about programming."}],
+    #     stream=True  # Default: full_response=False, yields content only
+    # )
     
-    for content in stream:
-        print(content, end="", flush=True)
+    # for content in stream:
+    #     print(content, end="", flush=True)
     
-    print("\n\n" + "="*60 + "\n")
+    # print("\n\n" + "="*60 + "\n")
     
-    # Example 2: Streaming with full_response=True (traditional behavior)
-    print("2. Streaming with full_response=True (full chunk objects):")
-    print("Question: Write a short poem about Python.")
-    print("Response: ", end="", flush=True)
+    # # Example 2: Streaming with full_response=True (traditional behavior)
+    # print("2. Streaming with full_response=True (full chunk objects):")
+    # print("Question: Write a short poem about Python.")
+    # print("Response: ", end="", flush=True)
     
-    stream = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Write a short poem about Python."}],
-        stream=True,
-        full_response=True  # Returns full chunk objects
-    )
+    # stream = client.chat.completions.create(
+    #     model="gpt-4o-mini",
+    #     messages=[{"role": "user", "content": "Write a short poem about Python."}],
+    #     stream=True,
+    #     full_response=True  # Returns full chunk objects
+    # )
     
-    for chunk in stream:
-        if chunk.choices[0].delta.content:
-            print(chunk.choices[0].delta.content, end="", flush=True)
+    # for chunk in stream:
+    #     if chunk.choices[0].delta.content:
+    #         print(chunk.choices[0].delta.content, end="", flush=True)
     
-    print("\n\n" + "="*60 + "\n")
+    # print("\n\n" + "="*60 + "\n")
     
     # Example 3: Sync streaming with tools (default: content only)
-    print("3. Sync streaming with tools (default: content only):")
-    print("Question: Get weather for Paris and calculate 15*8+12")
-    print("Response: ", end="", flush=True)
+    # print("3. Sync streaming with tools (default: content only):")
+    # print("Question: Get weather for Paris and calculate 15*8+12")
+    # print("Response: ", end="", flush=True)
     
-    stream = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Get weather for Paris and calculate 15*8+12"}],
-        tools=[sync_math_tool, sync_weather_tool],
-        stream=True  # Default: yields content only
-    )
+    # stream = client.chat.completions.create(
+    #     model="gpt-4o-mini",
+    #     messages=[{"role": "user", "content": "Get weather for Paris and calculate 15*8+12"}],
+    #     tools=[sync_math_tool, sync_weather_tool],
+    #     stream=True  # Default: yields content only
+    # )
     
-    for content in stream:
-        print(content, end="", flush=True)
+    # for content in stream:
+    #     print(content, end="", flush=True)
     
-    print("\n\n" + "="*60 + "\n")
+    # print("\n\n" + "="*60 + "\n")
     
-    # Example 4: Sync streaming with parallel tool execution
-    print("4. Sync streaming with parallel tool execution:")
-    print("Question: Get weather for New York, London, San Francisco, calculate 100*5-50 and 200/4, fetch from example.com")
-    print("Response: ", end="", flush=True)
+    # # Example 4: Sync streaming with parallel tool execution
+    # print("4. Sync streaming with parallel tool execution:")
+    # print("Question: Get weather for New York, London, San Francisco, calculate 100*5-50 and 200/4, fetch from example.com")
+    # print("Response: ", end="", flush=True)
     
-    stream = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Get weather for New York, London, San Francisco, calculate 100*5-50 and 200/4, and fetch content from example.com"}],
-        tools=[sync_math_tool, sync_weather_tool, sync_fetch_url],
-        parallel_tool_execution=True,  # This will run sync tools in parallel using thread pools
-        stream=True
-    )
+    # stream = client.chat.completions.create(
+    #     model="gpt-4o-mini",
+    #     messages=[{"role": "user", "content": "Get weather for New York, London, San Francisco, calculate 100*5-50 and 200/4, and fetch content from example.com"}],
+    #     tools=[sync_math_tool, sync_weather_tool, sync_fetch_url],
+    #     parallel_tool_execution=True,  # This will run sync tools in parallel using thread pools
+    #     stream=True
+    # )
     
-    for content in stream:
-        print(content, end="", flush=True)
+    # for content in stream:
+    #     print(content, end="", flush=True)
     
-    print("\n\n" + "="*60 + "\n")
+    # print("\n\n" + "="*60 + "\n")
     
     # Example 5: Client-level full_response=True
     print("5. Client with full_response=True (all responses are full objects):")

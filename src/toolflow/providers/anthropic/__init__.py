@@ -12,31 +12,39 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
 
 
-def from_anthropic(client: "anthropic.Anthropic", full_response: bool = False) -> "AnthropicWrapper":
+def from_anthropic(client, full_response: bool = False):
     """
     Create a toolflow wrapper around an existing Anthropic client.
     
+    Automatically detects whether the client is synchronous (Anthropic) or 
+    asynchronous (AsyncAnthropic) and returns the appropriate wrapper.
+    
     Args:
-        client: An existing Anthropic client instance
+        client: An existing Anthropic client instance (Anthropic or AsyncAnthropic)
         full_response: If True, return the full Anthropic response object. 
                       If False (default), return only the content or parsed data.
     
     Returns:
-        AnthropicWrapper that supports tool-py decorated functions
+        AnthropicWrapper or AnthropicAsyncWrapper that supports tool-py decorated functions
     
     Example:
         import anthropic
         import toolflow
+        
+        # Synchronous client
+        sync_client = toolflow.from_anthropic(anthropic.Anthropic())
+        content = sync_client.messages.create(...)
+        
+        # Asynchronous client
+        async_client = toolflow.from_anthropic(anthropic.AsyncAnthropic())
+        content = await async_client.messages.create(...)
         
         # Full response mode
         client = toolflow.from_anthropic(anthropic.Anthropic(), full_response=True)
         response = client.messages.create(...)
         content = response.content[0].text
         
-        # Simplified response mode (default)
-        client = toolflow.from_anthropic(anthropic.Anthropic(), full_response=False)
-        content = client.messages.create(...)  # Returns only content string
-        
+        # With tools
         @toolflow.tool
         def get_weather(city: str) -> str:
             return f"Weather in {city}: Sunny"
@@ -50,83 +58,26 @@ def from_anthropic(client: "anthropic.Anthropic", full_response: bool = False) -
     if not ANTHROPIC_AVAILABLE:
         raise ImportError("Anthropic library not installed. Install with: pip install anthropic")
     
-    # Validate client type
     # Allow Mock objects for testing
     if hasattr(client, '_mock_name') or client.__class__.__name__ == 'Mock':
-        # This is a mock object, allow it for testing
-        pass
-    elif not isinstance(client, anthropic.Anthropic):
+        # This is a mock object, assume sync wrapper for testing
+        return AnthropicWrapper(client, full_response)
+    
+    # Detect client type and return appropriate wrapper
+    if isinstance(client, anthropic.AsyncAnthropic):
+        return AnthropicAsyncWrapper(client, full_response)
+    elif isinstance(client, anthropic.Anthropic):
+        return AnthropicWrapper(client, full_response)
+    else:
+        # Provide helpful error message
         if hasattr(client, '__class__'):
             client_type = client.__class__.__name__
-            if client_type == "AsyncAnthropic":
-                raise TypeError(
-                    f"Expected synchronous Anthropic client, got AsyncAnthropic. "
-                    f"Use toolflow.from_anthropic_async() for AsyncAnthropic clients."
-                )
-            else:
-                raise TypeError(
-                    f"Expected anthropic.Anthropic client, got {client_type}. "
-                    f"Please pass a valid Anthropic() client instance."
-                )
+            raise TypeError(
+                f"Expected anthropic.Anthropic or anthropic.AsyncAnthropic client, got {client_type}. "
+                f"Please pass a valid Anthropic() or AsyncAnthropic() client instance."
+            )
         else:
             raise TypeError(
-                f"Expected anthropic.Anthropic client, got {type(client)}. "
-                f"Please pass a valid Anthropic() client instance."
+                f"Expected anthropic.Anthropic or anthropic.AsyncAnthropic client, got {type(client)}. "
+                f"Please pass a valid Anthropic() or AsyncAnthropic() client instance."
             )
-    
-    return AnthropicWrapper(client, full_response)
-
-
-def from_anthropic_async(client: "anthropic.AsyncAnthropic", full_response: bool = False) -> "AnthropicAsyncWrapper":
-    """
-    Create a toolflow wrapper around an existing Anthropic async client.
-    
-    Args:
-        client: An existing Anthropic async client instance
-        full_response: If True, return the full Anthropic response object.
-                      If False (default), return only the content or parsed data.
-    
-    Returns:
-        AnthropicAsyncWrapper that supports tool-py decorated functions
-    
-    Example:
-        import anthropic
-        import toolflow
-        
-        # Full response mode
-        client = toolflow.from_anthropic_async(anthropic.AsyncAnthropic(), full_response=True)
-        response = await client.messages.create(...)
-        content = response.content[0].text
-        
-        # Simplified response mode (default)
-        client = toolflow.from_anthropic_async(anthropic.AsyncAnthropic(), full_response=False)
-        content = await client.messages.create(...)  # Returns only content string
-    """
-    if not ANTHROPIC_AVAILABLE:
-        raise ImportError("Anthropic library not installed. Install with: pip install anthropic")
-    
-    # Validate client type
-    # Allow Mock objects for testing
-    if hasattr(client, '_mock_name') or client.__class__.__name__ == 'Mock':
-        # This is a mock object, allow it for testing
-        pass
-    elif not isinstance(client, anthropic.AsyncAnthropic):
-        if hasattr(client, '__class__'):
-            client_type = client.__class__.__name__
-            if client_type == "Anthropic":
-                raise TypeError(
-                    f"Expected asynchronous AsyncAnthropic client, got Anthropic. "
-                    f"Use toolflow.from_anthropic() for synchronous Anthropic clients."
-                )
-            else:
-                raise TypeError(
-                    f"Expected anthropic.AsyncAnthropic client, got {client_type}. "
-                    f"Please pass a valid AsyncAnthropic() client instance."
-                )
-        else:
-            raise TypeError(
-                f"Expected anthropic.AsyncAnthropic client, got {type(client)}. "
-                f"Please pass a valid AsyncAnthropic() client instance."
-            )
-    
-    return AnthropicAsyncWrapper(client, full_response)

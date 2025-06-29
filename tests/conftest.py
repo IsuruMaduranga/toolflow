@@ -110,16 +110,18 @@ def mock_async_openai_client():
 
 
 @pytest.fixture
-@pytest.mark.skipif(not OPENAI_AVAILABLE, reason="OpenAI not available")
 def sync_toolflow_client(mock_openai_client):
     """Create a sync toolflow client with mocked OpenAI client."""
+    if not OPENAI_AVAILABLE:
+        pytest.skip("OpenAI not available")
     return from_openai(mock_openai_client, full_response=True)
 
 
 @pytest.fixture
-@pytest.mark.skipif(not OPENAI_AVAILABLE, reason="OpenAI not available")
 def async_toolflow_client(mock_async_openai_client):
     """Create an async toolflow client with mocked OpenAI client."""
+    if not OPENAI_AVAILABLE:
+        pytest.skip("OpenAI not available")
     return from_openai_async(mock_async_openai_client, full_response=True)
 
 
@@ -141,16 +143,18 @@ def mock_async_anthropic_client():
 
 
 @pytest.fixture
-@pytest.mark.skipif(not ANTHROPIC_AVAILABLE, reason="Anthropic not available")
 def sync_anthropic_client(mock_anthropic_client):
     """Create a sync toolflow Anthropic client with mocked client."""
+    if not ANTHROPIC_AVAILABLE:
+        pytest.skip("Anthropic not available")
     return from_anthropic(mock_anthropic_client, full_response=True)
 
 
 @pytest.fixture
-@pytest.mark.skipif(not ANTHROPIC_AVAILABLE, reason="Anthropic not available")
 def async_anthropic_client(mock_async_anthropic_client):
     """Create an async toolflow Anthropic client with mocked client."""
+    if not ANTHROPIC_AVAILABLE:
+        pytest.skip("Anthropic not available")
     return from_anthropic_async(mock_async_anthropic_client, full_response=True)
 
 

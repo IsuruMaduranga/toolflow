@@ -10,9 +10,9 @@ import openai
 import toolflow
 import os
 
-@toolflow.tool
 def sync_calculator(operation: str, a: float, b: float) -> float:
-    """Perform basic mathematical operations (sync version)."""
+    """Perform basic mathematical operations add, subtract, multiply, divide."""
+    print("Executing sync calculator: ", operation, a, b)
     if operation == "add":
         print(f"Tool: Adding {a} and {b}")
         return a + b
@@ -30,26 +30,32 @@ def sync_calculator(operation: str, a: float, b: float) -> float:
     else:
         raise ValueError(f"Unknown operation: {operation}")
 
-
-@toolflow.tool
 async def async_database_query(query: str) -> str:
-    """Give your SQL query to the database and get the result.
-    Two tables are available: users and orders.
-    users table has the following columns: id, name, email, age
-    orders table has the following columns: id, user_id, amount, date
+    """Execute SQL queries on the database and get results.
+    Available tables: 
+    - users (columns: id, name, email, age) - contains 42 total users
+    - orders (columns: id, user_id, amount, date) - contains 128 total orders
+    
+    You can query for counts, specific data, or any SQL operations on these tables.
     """
+    print("Executing async database query: ", query)
     # Simulate async database operation
     await asyncio.sleep(0.1)
     
     if "users" in query.lower():
-        return "Found 42 users in the database"
+        if "count" in query.lower() or "total" in query.lower():
+            return "42"  # Return just the number for easier calculation
+        else:
+            return "Found 42 users in the database"
     elif "orders" in query.lower():
-        return "Found 128 orders in the database"
+        if "count" in query.lower() or "total" in query.lower():
+            return "128"  # Return just the number for easier calculation
+        else:
+            return "Found 128 orders in the database"
     else:
-        return f"Executed query: {query}"
+        return f"Executed query: {query}. Database contains 42 users and 128 orders."
 
 
-@toolflow.tool
 async def async_api_call(endpoint: str) -> str:
     """Simulate an async API call."""
     # Simulate async API call
@@ -86,9 +92,9 @@ async def main():
     # Using async client with a sync tool and an async tool
     content = await client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Multiply orders by number of users"}],
+        messages=[{"role": "user", "content": "Query the database to get the total number of users and orders, then multiply users by orders to get the result."}],
         tools=[sync_calculator, async_database_query],
-        max_tool_calls=5,
+        max_tool_calls=10,
     )
     print(content)  # Direct string output
 
