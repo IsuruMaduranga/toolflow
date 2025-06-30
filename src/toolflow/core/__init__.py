@@ -3,6 +3,7 @@ from .mixins import CreateMixin
 from .decorators import tool
 from .tool_execution import MaxToolCallsError, set_max_workers, get_max_workers, set_executor
 from .execution_loops import set_async_yield_frequency
+from .utils import filter_toolflow_params
 
 __all__ = [
     "Handler",
@@ -15,5 +16,6 @@ __all__ = [
     "set_max_workers",
     "get_max_workers",
     "set_executor",
-    "set_async_yield_frequency"
+    "set_async_yield_frequency",
+    "filter_toolflow_params"
 ]

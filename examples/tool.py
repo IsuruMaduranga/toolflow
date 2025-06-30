@@ -25,7 +25,7 @@ class UserDetails(BaseModel):
 
 def create_anthropic_response_tool(response_format):
     """Create a dynamic response tool for Anthropic structured output."""
-    from toolflow.decorators import tool
+    from toolflow.core.decorators import tool
     
     # 1. Define the base function WITHOUT the decorator syntax.
     def final_response_tool_internal(response: response_format) -> str:
