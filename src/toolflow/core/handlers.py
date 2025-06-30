@@ -1,5 +1,6 @@
 # src/toolflow/core/handlers.py
 from abc import ABC, abstractmethod
+import inspect
 from typing import Any, AsyncGenerator, Generator, List, Dict, Callable
 from .constants import RESPONSE_FORMAT_TOOL_NAME
 from .utils import get_structured_output_tool, get_tool_schema
@@ -74,15 +75,23 @@ class AbstractProviderHandler(ABC):
         tool_map = {}
 
         if tools:
-            response_format_tool_count = 0
             for tool in tools:
                 # check is tool is a function else error
+                if inspect.isbuiltin(tool):
+                    raise ValueError(f"Tool {tool} is a builtin function. You cannot use it as a tool.")
                 if callable(tool):
-                    schema = tool._tool_metadata if hasattr(tool, "_tool_metadata") else self.get_tool_schema(tool)
-                    if schema["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                        response_format_tool_count += 1
-                        if response_format_tool_count > 1:
-                            raise ValueError(f"You cannot use the {RESPONSE_FORMAT_TOOL_NAME} and response_format at the same time.")
+                    # Check for existing metadata (from decorator OR previous caching)
+                    if hasattr(tool, "_tool_metadata"):
+                        schema = tool._tool_metadata
+                    else:
+                        schema = self.get_tool_schema(tool)
+                        # Cache for future use, but only for non-built-in functions
+                        tool._tool_metadata = schema
+
+                    # check if the tool is the response format tool and it is not an internal tool
+                    if schema["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME and not hasattr(tool, "__internal_tool__"):
+                        raise ValueError(f"You cannot use the {RESPONSE_FORMAT_TOOL_NAME} as a tool. It is used internally to format the response.")
+                        
                     tool_schemas.append(schema)
                     tool_map[schema["function"]["name"]] = tool
                     continue

@@ -27,6 +27,7 @@ def get_structured_output_tool(pydantic_model: Any) -> Callable:
         pass
 
     final_response_tool_internal.__name__ = RESPONSE_FORMAT_TOOL_NAME
+    final_response_tool_internal.__internal_tool__ = True
     final_response_tool_internal.__doc__ = f"""
     You must call this tool to provide your final response.
     Because user expects the final response in `{pydantic_model.__name__}` format.

@@ -30,7 +30,7 @@ class AnthropicHandler(AbstractProviderHandler):
                 elif content_block.type == 'tool_use':
                     tool_calls.append(self._format_tool_call(content_block))
         
-        return text_content if text_content else None, tool_calls, response
+        return text_content, tool_calls, response
 
     def handle_streaming_response(self, response: Generator[RawMessageStreamEvent, None, None]) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
         accumulated_tool_calls = {}
@@ -188,12 +188,6 @@ class AnthropicHandler(AbstractProviderHandler):
             anthropic_tool_schemas.append(anthropic_schema)
         
         return anthropic_tool_schemas, tool_map
-
-    def parse_structured_output(self, tool_call: Dict, response_format: Any) -> Any:
-        """Handle the structured output from the tool call."""
-        tool_arguments = tool_call["function"]["arguments"]
-        response_data = tool_arguments.get('response', tool_arguments)
-        return response_format.model_validate(response_data)
 
     def _format_tool_call(self, tool_use_block) -> Dict:
         """Format Anthropic tool_use block to standard format."""
