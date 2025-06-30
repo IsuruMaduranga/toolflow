@@ -30,31 +30,5 @@ async def main():
     )
     print(parsed_data)
     
-    # print("Parsed data:", parsed_data) 
-    # print(isinstance(parsed_data, FibonacciResponse)) # Direct FibonacciResponse object
-
-    # # Beta API - returns parsed data directly
-    # beta_parsed_data = await client.beta.chat.completions.parse(
-    #     model="gpt-4o-mini",
-    #     messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
-    #     tools=[fibonacci],
-    #     response_format=FibonacciResponse
-    # )
-
-    # print("Beta parsed data:", beta_parsed_data) 
-    # print(isinstance(beta_parsed_data, FibonacciResponse)) # Direct FibonacciResponse object
-    
-    # # For full response access, use full_response=True
-    # full_client = toolflow.from_openai_async(AsyncOpenAI(), full_response=True)
-    # response = await full_client.chat.completions.create(
-    #     model="gpt-4o-mini",
-    #     messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
-    #     tools=[fibonacci],
-    #     response_format=FibonacciResponse
-    # )
-    # print("Full response access:")
-    # print(response.choices[0].message.parsed)
-    # print(response.choices[0].message.content)
-    
 if __name__ == "__main__":
     asyncio.run(main())

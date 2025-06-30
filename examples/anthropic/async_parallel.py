@@ -65,7 +65,7 @@ async def main():
     # Initialize async client - default behavior: simplified API (returns content directly)
     async_client = toolflow.from_anthropic(AsyncAnthropic())
 
-    print("=== Async Sequential Execution ===")
+    print("=== Async Execution ===")
     start_time = time.time()
     content = await async_client.messages.create(
         model="claude-3-5-haiku-latest",
@@ -79,7 +79,6 @@ async def main():
     print(f"Sequential execution time: {end_time - start_time:.2f} seconds")
     print()
 
-    print("=== Async Parallel Execution ===")
     start_time = time.time()
     content = await async_client.messages.create(
         model="claude-3-5-haiku-latest",

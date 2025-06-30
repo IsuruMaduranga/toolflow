@@ -3,7 +3,6 @@ import toolflow
 import os
 import time
 
-@toolflow.tool(name="sync_calculator")
 def sync_calculator(operation: str, a: float, b: float) -> float:
     """Perform basic mathematical operations (sync version)."""
     if operation == "add":
@@ -24,7 +23,6 @@ def sync_calculator(operation: str, a: float, b: float) -> float:
         raise ValueError(f"Unknown operation: {operation}")
 
 
-@toolflow.tool
 def sync_database_query(query: str) -> str:
     """Give your SQL query to the database and get the result.
     Two tables are available: users and orders.
@@ -41,8 +39,6 @@ def sync_database_query(query: str) -> str:
     else:
         return f"Executed query: {query}"
 
-
-@toolflow.tool
 def sync_api_call(endpoint: str) -> str:
     """Simulate an async API call."""
     # Simulate async API call

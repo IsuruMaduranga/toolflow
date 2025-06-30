@@ -7,7 +7,7 @@ def get_weather(location: str) -> str:
     """Get the current weather in a given location"""
     return f"Weather in {location}: Sunny, 72°F"
 
-client = toolflow.from_anthropic(Anthropic())
+client = toolflow.from_anthropic(AsyncAnthropic())
 
 async def main():
 

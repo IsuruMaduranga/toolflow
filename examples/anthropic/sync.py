@@ -17,6 +17,7 @@ response = client.messages.create(
     tools=[get_weather],  # Pass toolflow decorated functions directly
     parallel_tool_execution=True,  # Enable parallel execution
     messages=[{"role": "user", "content": "What's the weather like in San Francisco?"}],
+    full_response=True
 )
 
 print(response)  # Returns just the content string (simplified API)

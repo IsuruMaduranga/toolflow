@@ -44,7 +44,6 @@ async def main():
         response_format=FibonacciResponse
     )
     print("Full response access:")
-    print(response.parsed)
     print(response.content)
     
 if __name__ == "__main__":

@@ -197,23 +197,6 @@ Toolflow doesn't break anything - it's a true drop-in replacement:
 # All standard SDK features work unchanged
 client = toolflow.from_openai(OpenAI())
 
-# Function calling (official OpenAI way)
-response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "What's the weather?"}],
-    functions=[{
-        "name": "get_weather",
-        "description": "Get weather",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "city": {"type": "string"}
-            }
-        }
-    }],
-    full_response=True  # Get full SDK response
-)
-
 # All parameters work exactly as documented
 response = client.chat.completions.create(
     model="gpt-4o-mini",
