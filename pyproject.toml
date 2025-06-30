@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Isuru Wijesingha", email = "imwijesiri@gmail.com"}
+    {name = "Isuru Wijesiri", email = "imwijesiri@gmail.com"}
 ]
 keywords = ["llm", "openai", "tools", "function-calling", "ai"]
 classifiers = [
@@ -52,6 +52,9 @@ dev = [
 Homepage = "https://github.com/IsuruMaduranga/toolflow"
 Repository = "https://github.com/IsuruMaduranga/toolflow"
 Issues = "https://github.com/IsuruMaduranga/toolflow/issues"
+Documentation = "https://github.com/IsuruMaduranga/toolflow/tree/main/examples"
+LinkedIn = "https://www.linkedin.com/in/isuruwijesiri/"
+GitHub = "https://github.com/IsuruMaduranga"
 
 [tool.setuptools.packages.find]
 where = ["src"]

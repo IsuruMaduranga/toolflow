@@ -1,13 +1,13 @@
 # src/toolflow/providers/anthropic/handler.py
 import json
-from typing import Any, List, Dict, Generator, AsyncGenerator
+from typing import Any, List, Dict, Generator, AsyncGenerator, Union, Optional, Tuple
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import Message, RawMessageStreamEvent
 
 from toolflow.core import Handler
 
 class AnthropicHandler(Handler):
-    def __init__(self, client: Anthropic | AsyncAnthropic, original_create):
+    def __init__(self, client: Union[Anthropic, AsyncAnthropic], original_create):
         self.client = client
         self.original_create = original_create
 
@@ -27,7 +27,7 @@ class AnthropicHandler(Handler):
         async for event in response:
             yield event
 
-    def parse_response(self, response: Message) -> tuple[str | None, List[Dict], Any]:
+    def parse_response(self, response: Message) -> Tuple[Optional[str], List[Dict], Any]:
         """Parse a complete response into (text, tool_calls, raw_response)."""
         text_content = ""
         tool_calls = []
@@ -48,7 +48,7 @@ class AnthropicHandler(Handler):
         if response.stop_reason == "max_tokens":
             raise Exception("Max tokens reached without finding a solution")
 
-    def parse_stream_chunk(self, event: RawMessageStreamEvent) -> tuple[str | None, List[Dict] | None, Any]:
+    def parse_stream_chunk(self, event: RawMessageStreamEvent) -> Tuple[Optional[str], Optional[List[Dict]], Any]:
         """Parse a streaming event into (text, tool_calls, raw_event)."""
         text = None
         tool_calls = None
@@ -254,7 +254,7 @@ class AnthropicHandler(Handler):
         
         return False, "" 
 
-    def accumulate_streaming_response(self, response: Generator[RawMessageStreamEvent, None, None]) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
+    def accumulate_streaming_response(self, response: Generator[RawMessageStreamEvent, None, None]) -> Generator[Tuple[Optional[str], Optional[List[Dict]], Any], None, None]:
         """Handle streaming response with comprehensive tool call and thinking accumulation."""
         # Use the sophisticated accumulation logic from the old working code
         message_content = []
@@ -296,7 +296,7 @@ class AnthropicHandler(Handler):
             
             yield text, tool_calls, event
 
-    async def accumulate_streaming_response_async(self, response: AsyncGenerator[RawMessageStreamEvent, None]) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
+    async def accumulate_streaming_response_async(self, response: AsyncGenerator[RawMessageStreamEvent, None]) -> AsyncGenerator[Tuple[Optional[str], Optional[List[Dict]], Any], None]:
         """Handle async streaming response with comprehensive tool call and thinking accumulation."""
         # Use the sophisticated accumulation logic from the old working code
         message_content = []
@@ -338,7 +338,7 @@ class AnthropicHandler(Handler):
             
             yield text, tool_calls, event
 
-    def build_assistant_message(self, text: str | None, tool_calls: List[Dict], original_response: Message = None) -> Dict:
+    def build_assistant_message(self, text: Optional[str], tool_calls: List[Dict], original_response: Message = None) -> Dict:
         """Build an assistant message with tool calls for Anthropic format."""
         # If we have an original response with thinking blocks, use it directly to preserve signatures
         if original_response and self._has_thinking_blocks(original_response):
@@ -393,7 +393,7 @@ class AnthropicHandler(Handler):
         }]
     
     #@Override
-    def prepare_tool_schemas(self, tools: List[Any]) -> tuple[List[Dict], Dict]:
+    def prepare_tool_schemas(self, tools: List[Any]) -> Tuple[List[Dict], Dict]:
         """Prepare tool schemas in Anthropic format."""
         
         # Get OpenAI-format schemas from parent

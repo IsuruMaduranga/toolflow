@@ -1,6 +1,6 @@
 # src/toolflow/providers/openai/handlers.py
 import json
-from typing import Any, List, Dict, Generator, AsyncGenerator
+from typing import Any, List, Dict, Generator, AsyncGenerator, Union, Optional, Tuple
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
@@ -8,7 +8,7 @@ from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMe
 from toolflow.core import Handler
 
 class OpenAIHandler(Handler):
-    def __init__(self, client: OpenAI | AsyncOpenAI, original_create):
+    def __init__(self, client: Union[OpenAI, AsyncOpenAI], original_create):
         self.client = client
         self.original_create = original_create
 
@@ -28,7 +28,7 @@ class OpenAIHandler(Handler):
         async for chunk in response:
             yield chunk
 
-    def parse_response(self, response: ChatCompletion) -> tuple[str | None, List[Dict], Any]:
+    def parse_response(self, response: ChatCompletion) -> Tuple[Optional[str], List[Dict], Any]:
         """Parse a complete response into (text, tool_calls, raw_response)."""
         message = response.choices[0].message
         text = message.content
@@ -42,7 +42,7 @@ class OpenAIHandler(Handler):
         if response.choices[0].finish_reason == "length":
             raise Exception("Max tokens reached without finding a solution")
 
-    def parse_stream_chunk(self, chunk: ChatCompletionChunk) -> tuple[str | None, List[Dict] | None, Any]:
+    def parse_stream_chunk(self, chunk: ChatCompletionChunk) -> Tuple[Optional[str], Optional[List[Dict]], Any]:
         """Parse a streaming chunk into (text, tool_calls, raw_chunk)."""
         # Note: For OpenAI, tool calls are accumulated across chunks, so individual chunks
         # typically only contain text. This method parses individual chunks.
@@ -59,7 +59,7 @@ class OpenAIHandler(Handler):
             
         return text, tool_calls, chunk
 
-    def accumulate_streaming_response(self, response: Generator[ChatCompletionChunk, None, None]) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
+    def accumulate_streaming_response(self, response: Generator[ChatCompletionChunk, None, None]) -> Generator[Tuple[Optional[str], Optional[List[Dict]], Any], None, None]:
         """Handle streaming response with proper tool call accumulation."""
         tool_calls = []
         for chunk in self.stream_response(response):
@@ -96,7 +96,7 @@ class OpenAIHandler(Handler):
                 formatted_tool_calls.append(tc)
             yield None, formatted_tool_calls, None
 
-    async def accumulate_streaming_response_async(self, response: AsyncGenerator[ChatCompletionChunk, None]) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
+    async def accumulate_streaming_response_async(self, response: AsyncGenerator[ChatCompletionChunk, None]) -> AsyncGenerator[Tuple[Optional[str], Optional[List[Dict]], Any], None]:
         """Handle async streaming response with proper tool call accumulation."""
         tool_calls = []
         async for chunk in self.stream_response_async(response):
@@ -133,7 +133,7 @@ class OpenAIHandler(Handler):
                 formatted_tool_calls.append(tc)
             yield None, formatted_tool_calls, None
 
-    def build_assistant_message(self, text: str | None, tool_calls: List[Dict], original_response: Any = None) -> Dict:
+    def build_assistant_message(self, text: Optional[str], tool_calls: List[Dict], original_response: Any = None) -> Dict:
         """Build an assistant message with tool calls for OpenAI format."""
         message = {
             "role": "assistant",

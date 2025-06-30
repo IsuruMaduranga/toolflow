@@ -9,8 +9,7 @@
 
 
 
-Toolflow is a blazing-fast, lightweight drop-in replacement for the OpenAI and Anthropic SDKs — adding automatic parallel tool calling, structured Pydantic outputs, and smart response modes with zero breaking changes.
-Stop battling bloated tool-calling frameworks. Toolflow supercharges the official SDKs you already use, without sacrificing compatibility or simplicity.
+Toolflow is a blazing-fast, lightweight drop-in wrapper for the OpenAI and Anthropic SDKs — adding automatic parallel tool calling, structured Pydantic outputs, and smart response modes with zero breaking changes. Stop battling bloated tool-calling frameworks. Toolflow supercharges the official SDKs you already use, without sacrificing compatibility or simplicity.
 
 ## Installation
 
@@ -767,4 +766,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-Toolflow is an open-source project by [Isuru Wijesiri](https://www.linkedin.com/in/isuruwijesiri/) — building tools that make AI development faster, cleaner, and more fun.
+Toolflow is an open-source project by [Isuru Wijesiri](https://www.linkedin.com/in/isuruwijesiri/)
