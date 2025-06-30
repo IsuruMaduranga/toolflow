@@ -43,6 +43,11 @@ class AnthropicHandler(TransportAdapter, MessageAdapter):
         
         return text_content, tool_calls, response
 
+    def check_max_tokens_reached(self, response: Message) -> None:
+        """Check if max tokens was reached and raise exception if so."""
+        if response.stop_reason == "max_tokens":
+            raise Exception("Max tokens reached without finding a solution")
+
     def parse_stream_chunk(self, event: RawMessageStreamEvent) -> tuple[str | None, List[Dict] | None, Any]:
         """Parse a streaming event into (text, tool_calls, raw_event)."""
         text = None

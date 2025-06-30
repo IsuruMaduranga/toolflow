@@ -31,6 +31,7 @@ class TransportAdapter(ABC):
         """Handle an async streaming response and yield raw chunks."""
         pass
 
+    @abstractmethod
     def accumulate_streaming_response(self, response: Any) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
         """
         Handle streaming response with tool call accumulation.
@@ -39,10 +40,9 @@ class TransportAdapter(ABC):
         tool calls across multiple chunks. Default implementation uses simple
         chunk-by-chunk parsing, but providers can override for complex accumulation.
         """
-        for chunk in self.stream_response(response):
-            text, tool_calls, raw_chunk = self.parse_stream_chunk(chunk)
-            yield text, tool_calls, raw_chunk
+        pass
 
+    @abstractmethod
     async def accumulate_streaming_response_async(self, response: Any) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
         """
         Handle async streaming response with tool call accumulation.
@@ -51,9 +51,12 @@ class TransportAdapter(ABC):
         tool calls across multiple chunks. Default implementation uses simple
         chunk-by-chunk parsing, but providers can override for complex accumulation.
         """
-        async for chunk in self.stream_response_async(response):
-            text, tool_calls, raw_chunk = self.parse_stream_chunk(chunk)
-            yield text, tool_calls, raw_chunk
+        pass
+
+    @abstractmethod
+    def check_max_tokens_reached(self, response: Any) -> None:
+        """Check if max tokens was reached and raise exception if so."""
+        pass
 
 
 class MessageAdapter(ABC):

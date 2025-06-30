@@ -44,6 +44,9 @@ def sync_execution_loop(
     if not tools and not response_format_tool:
         response = handler.call_api(**kwargs)
         text, _, raw_response = handler.parse_response(response)
+        # Check if max tokens was reached
+        if hasattr(handler, 'check_max_tokens_reached'):
+            handler.check_max_tokens_reached(response)
         return raw_response if full_response else text
     
     # If we have a response format tool, add it to tools
@@ -56,6 +59,10 @@ def sync_execution_loop(
     for _ in range(max_tool_calls):
         response = handler.call_api(**kwargs)
         text, tool_calls, raw_response = handler.parse_response(response)
+        
+        # Check if max tokens was reached
+        if hasattr(handler, 'check_max_tokens_reached'):
+            handler.check_max_tokens_reached(response)
 
         if not tool_calls:
             # If no tool calls but response_format is specified, try to parse text as JSON
@@ -122,6 +129,9 @@ async def async_execution_loop(
     if not tools and not response_format_tool:
         response = await handler.call_api_async(**kwargs)
         text, _, raw_response = handler.parse_response(response)
+        # Check if max tokens was reached
+        if hasattr(handler, 'check_max_tokens_reached'):
+            handler.check_max_tokens_reached(response)
         return raw_response if full_response else text
     
     # If we have a response format tool, add it to tools
@@ -134,6 +144,10 @@ async def async_execution_loop(
     for _ in range(max_tool_calls):
         response = await handler.call_api_async(**kwargs)
         text, tool_calls, raw_response = handler.parse_response(response)
+        
+        # Check if max tokens was reached
+        if hasattr(handler, 'check_max_tokens_reached'):
+            handler.check_max_tokens_reached(response)
 
         if not tool_calls:
             # If no tool calls but response_format is specified, try to parse text as JSON

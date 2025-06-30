@@ -37,6 +37,11 @@ class OpenAIHandler(TransportAdapter, MessageAdapter):
             tool_calls = [self._format_tool_call(tc) for tc in message.tool_calls]
         return text, tool_calls, response
 
+    def check_max_tokens_reached(self, response: ChatCompletion) -> None:
+        """Check if max tokens was reached and raise exception if so."""
+        if response.choices[0].finish_reason == "length":
+            raise Exception("Max tokens reached without finding a solution")
+
     def parse_stream_chunk(self, chunk: ChatCompletionChunk) -> tuple[str | None, List[Dict] | None, Any]:
         """Parse a streaming chunk into (text, tool_calls, raw_chunk)."""
         # Note: For OpenAI, tool calls are accumulated across chunks, so individual chunks
