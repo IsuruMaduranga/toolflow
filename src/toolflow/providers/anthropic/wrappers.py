@@ -2,10 +2,7 @@ from typing import Any, List, Dict, overload, Iterable, AsyncIterable
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import Message, RawMessageStreamEvent
 
-from ...core.execution_loops import (
-    sync_execution_loop, sync_streaming_execution_loop,
-    async_execution_loop, async_streaming_execution_loop
-)
+from ...core.mixins import CreateMixin
 from ...core.utils import filter_toolflow_params
 from .handler import AnthropicHandler
 
@@ -21,7 +18,7 @@ class AnthropicWrapper:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
 
-class MessagesWrapper:
+class MessagesWrapper(CreateMixin):
     def __init__(self, client: Anthropic, full_response: bool = False):
         self._client = client
         self.full_response = full_response
@@ -34,15 +31,7 @@ class MessagesWrapper:
     def create(self, *, stream=True, **kwargs: Any) -> Iterable[RawMessageStreamEvent]: ...
 
     def create(self, **kwargs: Any) -> Any:
-        # merge full_response with kwargs, but allow method-level override
-        if "full_response" not in kwargs:
-            kwargs["full_response"] = self.full_response
-        if kwargs.get("stream", False):
-            if kwargs.get("response_format", None):
-                raise ValueError("response_format is not supported for streaming")
-            return sync_streaming_execution_loop(handler=self.handler, **kwargs)
-        else:
-            return sync_execution_loop(handler=self.handler, **kwargs)
+        return self._create_sync(**kwargs)
     
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
@@ -59,7 +48,7 @@ class AsyncAnthropicWrapper:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
 
-class AsyncMessagesWrapper:
+class AsyncMessagesWrapper(CreateMixin):
     def __init__(self, client: AsyncAnthropic, full_response: bool = False):
         self._client = client
         self.full_response = full_response
@@ -71,15 +60,7 @@ class AsyncMessagesWrapper:
     async def create(self, *, stream=True, **kwargs: Any) -> AsyncIterable[RawMessageStreamEvent]: ...
 
     async def create(self, **kwargs: Any) -> Any:
-        # merge full_response with kwargs, but allow method-level override
-        if "full_response" not in kwargs:
-            kwargs["full_response"] = self.full_response
-        if kwargs.get("stream", False):
-            if kwargs.get("response_format", None):
-                raise ValueError("response_format is not supported for streaming")
-            return async_streaming_execution_loop(handler=self.handler, **kwargs)
-        else:
-            return await async_execution_loop(handler=self.handler, **kwargs) 
+        return await self._create_async(**kwargs) 
     
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
