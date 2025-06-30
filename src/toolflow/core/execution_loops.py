@@ -95,13 +95,7 @@ def sync_execution_loop(
                     return raw_response if full_response else parsed
 
         # Add assistant message with tool calls to conversation
-        # For Anthropic thinking mode, use original response to preserve thinking block structure
-        if (hasattr(handler, 'has_thinking_content') and 
-            hasattr(handler, 'build_assistant_message_from_response') and
-            handler.has_thinking_content(raw_response)):
-            messages.append(handler.build_assistant_message_from_response(raw_response))
-        else:
-            messages.append(handler.build_assistant_message(text, tool_calls))
+        messages.append(handler.build_assistant_message(text, tool_calls, raw_response))
         
         tool_results = execute_tools(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
         messages.extend(handler.build_tool_result_messages(tool_results))
@@ -178,14 +172,8 @@ async def async_execution_loop(
                     parsed = handler.parse_structured_output(tool_call, response_format)
                     return raw_response if full_response else parsed
 
-        # Add assistant message with tool calls to conversation
-        # For Anthropic thinking mode, use original response to preserve thinking block structure
-        if (hasattr(handler, 'has_thinking_content') and 
-            hasattr(handler, 'build_assistant_message_from_response') and
-            handler.has_thinking_content(raw_response)):
-            kwargs["messages"].append(handler.build_assistant_message_from_response(raw_response))
-        else:
-            kwargs["messages"].append(handler.build_assistant_message(text, tool_calls))
+        # Add assistant message with tool calls to conversation  
+        kwargs["messages"].append(handler.build_assistant_message(text, tool_calls, raw_response))
         
         tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling)
         kwargs["messages"].extend(handler.build_tool_result_messages(tool_results))
@@ -261,7 +249,7 @@ def sync_streaming_execution_loop(
                         return parsed if not full_response else {"parsed": parsed}
             
             # Add assistant message with tool calls to conversation
-            messages.append(handler.build_assistant_message(accumulated_content, accumulated_tool_calls))
+            messages.append(handler.build_assistant_message(accumulated_content, accumulated_tool_calls, None))
             
             # Execute tools
             tool_results = execute_tools(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
@@ -366,7 +354,7 @@ def async_streaming_execution_loop(
                             return
                 
                 # Add assistant message with tool calls to conversation
-                messages.append(handler.build_assistant_message(accumulated_content, accumulated_tool_calls))
+                messages.append(handler.build_assistant_message(accumulated_content, accumulated_tool_calls, None))
                 
                 # Execute tools (this properly yields via asyncio.gather/run_in_executor)
                 tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling)

@@ -128,7 +128,7 @@ class OpenAIHandler(TransportAdapter, MessageAdapter):
                 formatted_tool_calls.append(tc)
             yield None, formatted_tool_calls, None
 
-    def build_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
+    def build_assistant_message(self, text: str | None, tool_calls: List[Dict], original_response: Any = None) -> Dict:
         """Build an assistant message with tool calls for OpenAI format."""
         message = {
             "role": "assistant",

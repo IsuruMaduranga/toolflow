@@ -333,8 +333,16 @@ class AnthropicHandler(TransportAdapter, MessageAdapter):
             
             yield text, tool_calls, event
 
-    def build_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
+    def build_assistant_message(self, text: str | None, tool_calls: List[Dict], original_response: Message = None) -> Dict:
         """Build an assistant message with tool calls for Anthropic format."""
+        # If we have an original response with thinking blocks, use it directly to preserve signatures
+        if original_response and self._has_thinking_blocks(original_response):
+            return {
+                "role": "assistant", 
+                "content": original_response.content
+            }
+        
+        # Standard message building for non-thinking responses
         content = []
         
         if text:
@@ -357,19 +365,12 @@ class AnthropicHandler(TransportAdapter, MessageAdapter):
             "content": content
         }
 
-    def has_thinking_content(self, response: Message) -> bool:
-        """Check if a response contains thinking content blocks."""
+    def _has_thinking_blocks(self, response: Message) -> bool:
+        """Check if a response contains thinking or redacted_thinking blocks."""
         for content_block in response.content:
-            if hasattr(content_block, 'type') and content_block.type == 'thinking':
+            if hasattr(content_block, 'type') and content_block.type in ('thinking', 'redacted_thinking'):
                 return True
         return False
-
-    def build_assistant_message_from_response(self, response: Message) -> Dict:
-        """Build an assistant message from the original response for thinking mode compatibility."""
-        return {
-            "role": "assistant",
-            "content": response.content
-        }
 
     def build_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
         """Build tool result messages for Anthropic format."""
