@@ -83,21 +83,50 @@ def execute_tools(
     
     if not parallel:
         # Sequential execution (default for playground use)
-        return [_run_sync_tool(tool_call, tool_map[tool_call["function"]["name"]], graceful_error_handling) for tool_call in tool_calls]
+        results = []
+        for tool_call in tool_calls:
+            tool_name = tool_call["function"]["name"]
+            if tool_name in tool_map:
+                results.append(_run_sync_tool(tool_call, tool_map[tool_name], graceful_error_handling))
+            else:
+                # Handle unknown tool
+                if graceful_error_handling:
+                    results.append({
+                        "tool_call_id": tool_call["id"],
+                        "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
+                        "is_error": True,
+                    })
+                else:
+                    raise KeyError(f"Unknown tool: {tool_name}")
+        return results
     
     # Parallel execution using global thread pool
     executor = _get_sync_executor()
-    future_to_tool_call = {
-        executor.submit(
-            _run_sync_tool,
-            tool_call,
-            tool_map[tool_call["function"]["name"]],
-            graceful_error_handling
-        ): tool_call
-        for tool_call in tool_calls
-    }
-    
+    future_to_tool_call = {}
     tool_results = []
+    
+    for tool_call in tool_calls:
+        tool_name = tool_call["function"]["name"]
+        if tool_name in tool_map:
+            future = executor.submit(
+                _run_sync_tool,
+                tool_call,
+                tool_map[tool_name],
+                graceful_error_handling
+            )
+            future_to_tool_call[future] = tool_call
+        else:
+            # Handle unknown tool immediately
+            if graceful_error_handling:
+                tool_results.append({
+                    "tool_call_id": tool_call["id"],
+                    "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
+                    "is_error": True,
+                })
+            else:
+                raise KeyError(f"Unknown tool: {tool_name}")
+    
+    # Collect results from futures
     for future in future_to_tool_call:
         tool_results.append(future.result())
     
@@ -126,8 +155,11 @@ async def execute_tools_async(
     sync_tool_calls = []
     async_tool_tasks: List[Coroutine] = []
 
+    unknown_tool_results = []
+    
     for tool_call in tool_calls:
-        tool_func = tool_map.get(tool_call["function"]["name"])
+        tool_name = tool_call["function"]["name"]
+        tool_func = tool_map.get(tool_name)
         if tool_func:
             if asyncio.iscoroutinefunction(tool_func):
                 async_tool_tasks.append(
@@ -135,6 +167,16 @@ async def execute_tools_async(
                 )
             else:
                 sync_tool_calls.append(tool_call)
+        else:
+            # Handle unknown tool
+            if graceful_error_handling:
+                unknown_tool_results.append({
+                    "tool_call_id": tool_call["id"],
+                    "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
+                    "is_error": True,
+                })
+            else:
+                raise KeyError(f"Unknown tool: {tool_name}")
     
     # Run sync tools using custom executor or asyncio's default
     sync_results = []
@@ -157,7 +199,7 @@ async def execute_tools_async(
     # Run async tools concurrently
     async_results = await asyncio.gather(*async_tool_tasks)
 
-    return sync_results + async_results
+    return sync_results + async_results + unknown_tool_results
 
 
 def _run_sync_tool(tool_call: Dict, tool_func: Callable, graceful_error_handling: bool = True) -> Dict:

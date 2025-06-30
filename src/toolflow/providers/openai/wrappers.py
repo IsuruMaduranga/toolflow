@@ -64,6 +64,9 @@ class CompletionsWrapper:
             return sync_streaming_execution_loop(handler=self.handler, **kwargs)
         else:
             return sync_execution_loop(handler=self.handler, **kwargs)
+    
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._client, name)
 
 # --- Asynchronous Wrappers ---
 
@@ -117,3 +120,6 @@ class AsyncCompletionsWrapper:
             return async_streaming_execution_loop(handler=self.handler, **kwargs)
         else:
             return await async_execution_loop(handler=self.handler, **kwargs)
+    
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._client, name)

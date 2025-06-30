@@ -36,12 +36,14 @@ def sync_execution_loop(
     tools = kwargs.get("tools", [])
     messages = kwargs.get("messages", [])
     
-    if not tools:
-        response = handler.call_api(messages=messages, **kwargs)
+    response_format_tool = handler.get_response_format_tool(response_format)
+    
+    if not tools and not response_format_tool:
+        response = handler.call_api(**kwargs)
         text, _, raw_response = handler.handle_response(response)
         return raw_response if full_response else text
     
-    response_format_tool = handler.get_response_format_tool(response_format)
+    # If we have a response format tool, add it to tools
     if response_format_tool:
         tools.append(response_format_tool)
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
@@ -53,6 +55,33 @@ def sync_execution_loop(
         text, tool_calls, raw_response = handler.handle_response(response)
 
         if not tool_calls:
+            # If no tool calls but response_format is specified, try to parse text as JSON
+            if response_format_tool and text is not None:
+                try:
+                    import json
+                    parsed_json = json.loads(text)
+                    parsed = response_format.model_validate(parsed_json)
+                    if full_response:
+                        # For full response, replace the content with parsed model
+                        try:
+                            # OpenAI format
+                            raw_response.choices[0].message.content = parsed
+                        except (AttributeError, TypeError):
+                            # Anthropic format
+                            if hasattr(raw_response, 'content') and raw_response.content:
+                                for block in raw_response.content:
+                                    if hasattr(block, 'text'):
+                                        block.text = parsed
+                                        break
+                        return raw_response
+                    else:
+                        return parsed
+                except json.JSONDecodeError as e:
+                    # If JSON parsing fails when response_format is specified, raise an error
+                    raise ValueError(f"Invalid JSON in response when response_format is specified: {e}") from e
+                except Exception:
+                    # Re-raise validation errors and other exceptions
+                    raise
             return raw_response if full_response else text
         
         if response_format_tool:
@@ -84,12 +113,15 @@ async def async_execution_loop(
      graceful_error_handling) = filter_toolflow_params(**kwargs)
     
     tools = kwargs.get("tools", [])
-    if not tools:
+    
+    response_format_tool = handler.get_response_format_tool(response_format)
+    
+    if not tools and not response_format_tool:
         response = await handler.call_api_async(**kwargs)
         text, _, raw_response = handler.handle_response(response)
         return raw_response if full_response else text
     
-    response_format_tool = handler.get_response_format_tool(response_format)
+    # If we have a response format tool, add it to tools
     if response_format_tool:
         tools.append(response_format_tool)
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
@@ -101,6 +133,33 @@ async def async_execution_loop(
         text, tool_calls, raw_response = handler.handle_response(response)
 
         if not tool_calls:
+            # If no tool calls but response_format is specified, try to parse text as JSON
+            if response_format_tool and text is not None:
+                try:
+                    import json
+                    parsed_json = json.loads(text)
+                    parsed = response_format.model_validate(parsed_json)
+                    if full_response:
+                        # For full response, replace the content with parsed model
+                        try:
+                            # OpenAI format
+                            raw_response.choices[0].message.content = parsed
+                        except (AttributeError, TypeError):
+                            # Anthropic format
+                            if hasattr(raw_response, 'content') and raw_response.content:
+                                for block in raw_response.content:
+                                    if hasattr(block, 'text'):
+                                        block.text = parsed
+                                        break
+                        return raw_response
+                    else:
+                        return parsed
+                except json.JSONDecodeError as e:
+                    # If JSON parsing fails when response_format is specified, raise an error
+                    raise ValueError(f"Invalid JSON in response when response_format is specified: {e}") from e
+                except Exception:
+                    # Re-raise validation errors and other exceptions
+                    raise
             return raw_response if full_response else text
         
         if response_format_tool:

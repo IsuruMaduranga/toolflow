@@ -1,196 +1,164 @@
 """
-Common test fixtures and utilities for toolflow tests.
+Shared test fixtures and utilities for the toolflow test suite.
 """
 import pytest
-from unittest.mock import Mock, AsyncMock
-import datetime
-import time
 import asyncio
+import time
+import datetime
+from unittest.mock import Mock, AsyncMock
+from typing import List, Dict, Any
+from pydantic import BaseModel
 
-# Import toolflow functions with graceful fallbacks
+# Import toolflow components
 try:
-    from toolflow import tool, from_openai, from_openai_async
-    OPENAI_AVAILABLE = True
+    import toolflow
+    from toolflow import tool, from_openai, from_anthropic
+    TOOLFLOW_AVAILABLE = True
 except ImportError:
-    OPENAI_AVAILABLE = False
+    TOOLFLOW_AVAILABLE = False
 
-try:
-    from toolflow import from_anthropic, from_anthropic_async
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
+# Pydantic models for structured output testing
+class Person(BaseModel):
+    name: str
+    age: int
+    skills: List[str]
 
+class TeamAnalysis(BaseModel):
+    people: List[Person]
+    average_age: float
+    top_skills: List[str]
 
-# Common test tools (provider-agnostic)
+class WeatherInfo(BaseModel):
+    city: str
+    temperature: float
+    condition: str
+    humidity: int
+
+# Common test tools
 @tool
 def simple_math_tool(a: float, b: float) -> float:
-    """Add two numbers."""
+    """Add two numbers together."""
     return a + b
-
 
 @tool
 def divide_tool(a: float, b: float) -> float:
     """Divide two numbers."""
+    if b == 0:
+        raise ValueError("Cannot divide by zero")
     return a / b
 
+@tool
+def multiply_tool(a: float, b: float) -> float:
+    """Multiply two numbers."""
+    return a * b
 
 @tool
-def get_current_time_tool():
-    """Get the current time."""
-    return str(datetime.datetime.now())
+def weather_tool(city: str) -> str:
+    """Get weather information for a city (mock)."""
+    return f"Weather in {city}: Sunny, 72°F, Humidity: 45%"
 
+@tool
+def population_tool(city: str) -> str:
+    """Get population information for a city (mock)."""
+    populations = {
+        "new york": "8.3 million",
+        "london": "9.0 million", 
+        "tokyo": "14.0 million",
+        "paris": "2.1 million"
+    }
+    return f"Population of {city}: {populations.get(city.lower(), 'Unknown')}"
+
+@tool
+def slow_tool(name: str, delay: float = 0.1) -> str:
+    """A tool that takes time to execute (for parallel execution testing)."""
+    time.sleep(delay)
+    return f"Completed {name} after {delay}s delay"
+
+@tool
+def failing_tool(should_fail: bool = True, error_message: str = "Tool failed") -> str:
+    """A tool that can fail for error handling testing."""
+    if should_fail:
+        raise ValueError(error_message)
+    return "Tool succeeded"
+
+@tool
+def get_time_tool() -> str:
+    """Get current timestamp."""
+    return datetime.datetime.now().isoformat()
 
 @tool
 async def async_math_tool(a: float, b: float) -> float:
     """Add two numbers asynchronously."""
-    await asyncio.sleep(0.001)
+    await asyncio.sleep(0.01)  # Small delay to simulate async work
     return a + b
 
-
 @tool
-def slow_tool(name: str, delay: float) -> str:
-    """A tool that takes time to execute (for testing parallel execution)."""
-    time.sleep(delay)
-    return f"Result from {name} after {delay}s"
-
-
-@tool
-async def slow_async_tool(name: str, delay: float) -> str:
+async def slow_async_tool(name: str, delay: float = 0.1) -> str:
     """An async tool that takes time to execute."""
     await asyncio.sleep(delay)
-    return f"Async result from {name} after {delay}s"
-
+    return f"Async completed {name} after {delay}s delay"
 
 @tool
-def failing_tool(should_fail: bool = True) -> str:
-    """A tool that can fail for testing error handling."""
+async def failing_async_tool(should_fail: bool = True) -> str:
+    """An async tool that can fail."""
+    await asyncio.sleep(0.01)
     if should_fail:
-        raise ValueError("This tool failed intentionally")
-    return "Success"
+        raise ValueError("Async tool failed")
+    return "Async tool succeeded"
 
+# Tool collections for testing
+BASIC_TOOLS = [simple_math_tool, divide_tool, multiply_tool]
+MIXED_TOOLS = [weather_tool, population_tool, simple_math_tool]
+SLOW_TOOLS = [slow_tool]
+ASYNC_TOOLS = [async_math_tool, slow_async_tool]
+ERROR_TOOLS = [failing_tool, failing_async_tool]
 
-@tool
-def weather_tool(city: str) -> str:
-    """Get weather for a city (mock tool)."""
-    return f"Weather in {city}: Sunny, 72°F"
-
-
-@tool
-def calculator_tool(operation: str, a: float, b: float) -> float:
-    """Perform mathematical operations."""
-    if operation == "add":
-        return a + b
-    elif operation == "subtract":
-        return a - b
-    elif operation == "multiply":
-        return a * b
-    elif operation == "divide":
-        if b == 0:
-            raise ValueError("Cannot divide by zero")
-        return a / b
-    else:
-        raise ValueError(f"Unknown operation: {operation}")
-
-
-# OpenAI-specific fixtures
-@pytest.fixture
-def mock_openai_client():
-    """Create a mock OpenAI client."""
-    client = Mock()
-    client.chat.completions = Mock()
-    return client
-
-
-@pytest.fixture
-def mock_async_openai_client():
-    """Create a mock async OpenAI client."""
-    client = Mock()
-    client.chat.completions = AsyncMock()
-    return client
-
-
-@pytest.fixture
-def sync_toolflow_client(mock_openai_client):
-    """Create a sync toolflow client with mocked OpenAI client."""
-    if not OPENAI_AVAILABLE:
-        pytest.skip("OpenAI not available")
-    return from_openai(mock_openai_client, full_response=True)
-
-
-@pytest.fixture
-def async_toolflow_client(mock_async_openai_client):
-    """Create an async toolflow client with mocked OpenAI client."""
-    if not OPENAI_AVAILABLE:
-        pytest.skip("OpenAI not available")
-    return from_openai_async(mock_async_openai_client, full_response=True)
-
-
-# Anthropic-specific fixtures
-@pytest.fixture
-def mock_anthropic_client():
-    """Create a mock Anthropic client."""
-    client = Mock()
-    client.messages = Mock()
-    return client
-
-
-@pytest.fixture
-def mock_async_anthropic_client():
-    """Create a mock async Anthropic client."""
-    client = Mock()
-    client.messages = AsyncMock()
-    return client
-
-
-@pytest.fixture
-def sync_anthropic_client(mock_anthropic_client):
-    """Create a sync toolflow Anthropic client with mocked client."""
-    if not ANTHROPIC_AVAILABLE:
-        pytest.skip("Anthropic not available")
-    return from_anthropic(mock_anthropic_client, full_response=True)
-
-
-@pytest.fixture
-def async_anthropic_client(mock_async_anthropic_client):
-    """Create an async toolflow Anthropic client with mocked client."""
-    if not ANTHROPIC_AVAILABLE:
-        pytest.skip("Anthropic not available")
-    return from_anthropic_async(mock_async_anthropic_client, full_response=True)
-
-
-# OpenAI helper functions
-def create_mock_openai_tool_call(call_id: str, function_name: str, arguments: dict):
-    """Helper to create a mock OpenAI tool call."""
+# OpenAI Mock Helpers
+def create_openai_tool_call(call_id: str, function_name: str, arguments: dict):
+    """Create a mock OpenAI tool call."""
     import json
     mock_call = Mock()
     mock_call.id = call_id
+    mock_call.function = Mock()
     mock_call.function.name = function_name
     mock_call.function.arguments = json.dumps(arguments)
+    mock_call.type = "function"
     return mock_call
 
-
-def create_mock_openai_response(tool_calls=None, content=None):
-    """Helper to create a mock OpenAI response."""
+def create_openai_response(content: str = None, tool_calls: List = None, usage: dict = None):
+    """Create a mock OpenAI response."""
     response = Mock()
     response.choices = [Mock()]
-    response.choices[0].message.tool_calls = tool_calls
+    response.choices[0].message = Mock()
     response.choices[0].message.content = content
+    response.choices[0].message.tool_calls = tool_calls or []
+    response.choices[0].finish_reason = "stop" if not tool_calls else "tool_calls"
+    
+    # Add usage information
+    response.usage = Mock()
+    if usage:
+        for key, value in usage.items():
+            setattr(response.usage, key, value)
+    else:
+        response.usage.total_tokens = 100
+        response.usage.prompt_tokens = 50
+        response.usage.completion_tokens = 50
+    
     return response
 
-
-def create_mock_openai_streaming_chunk(content=None, tool_calls=None):
-    """Helper to create a mock OpenAI streaming chunk."""
+def create_openai_stream_chunk(content: str = None, tool_calls: List = None, finish_reason: str = None):
+    """Create a mock OpenAI streaming chunk."""
     chunk = Mock()
     chunk.choices = [Mock()]
     chunk.choices[0].delta = Mock()
     chunk.choices[0].delta.content = content
     chunk.choices[0].delta.tool_calls = tool_calls
+    chunk.choices[0].finish_reason = finish_reason
     return chunk
 
-
-# Anthropic helper functions
-def create_mock_anthropic_tool_call(call_id: str, tool_name: str, tool_input: dict):
-    """Helper to create a mock Anthropic tool call."""
+# Anthropic Mock Helpers  
+def create_anthropic_tool_call(call_id: str, tool_name: str, tool_input: dict):
+    """Create a mock Anthropic tool call."""
     mock_call = Mock()
     mock_call.id = call_id
     mock_call.name = tool_name
@@ -198,52 +166,114 @@ def create_mock_anthropic_tool_call(call_id: str, tool_name: str, tool_input: di
     mock_call.type = "tool_use"
     return mock_call
 
-
-def create_mock_anthropic_response(tool_calls=None, content=None):
-    """Helper to create a mock Anthropic response."""
+def create_anthropic_response(content: str = None, tool_calls: List = None, usage: dict = None):
+    """Create a mock Anthropic response."""
     response = Mock()
     
-    if content is None and tool_calls is None:
-        content = "Test response"
-    
-    # Build content array
+    # Create content blocks
     content_blocks = []
-    
     if content:
-        content_blocks.append(Mock(type="text", text=content))
+        text_block = Mock()
+        text_block.type = "text"
+        text_block.text = content
+        content_blocks.append(text_block)
     
     if tool_calls:
-        for tool_call in tool_calls:
-            content_blocks.append(tool_call)
+        content_blocks.extend(tool_calls)
     
     response.content = content_blocks
+    response.stop_reason = "end_turn" if not tool_calls else "tool_use"
+    
+    # Add usage information
+    response.usage = Mock()
+    if usage:
+        for key, value in usage.items():
+            setattr(response.usage, key, value)
+    else:
+        response.usage.input_tokens = 50
+        response.usage.output_tokens = 50
+    
     return response
 
-
-def create_mock_anthropic_streaming_chunk(chunk_type: str, **kwargs):
-    """Helper to create a mock Anthropic streaming chunk."""
+def create_anthropic_stream_chunk(chunk_type: str, **kwargs):
+    """Create a mock Anthropic streaming chunk."""
     chunk = Mock()
     chunk.type = chunk_type
     
-    if chunk_type == "content_block_start":
-        chunk.index = kwargs.get("index", 0)
-        chunk.content_block = kwargs.get("content_block")
-    elif chunk_type == "content_block_delta":
-        chunk.index = kwargs.get("index", 0)
-        chunk.delta = kwargs.get("delta")
-    elif chunk_type == "content_block_stop":
-        chunk.index = kwargs.get("index", 0)
-    elif chunk_type == "message_start":
-        chunk.message = kwargs.get("message", Mock())
-    elif chunk_type == "message_delta":
-        chunk.delta = kwargs.get("delta", Mock())
-    elif chunk_type == "message_stop":
-        pass
+    if chunk_type == "content_block_delta":
+        chunk.delta = Mock()
+        chunk.delta.type = kwargs.get("delta_type", "text_delta")
+        if "text" in kwargs:
+            chunk.delta.text = kwargs["text"]
+    elif chunk_type == "content_block_start":
+        chunk.content_block = Mock()
+        chunk.content_block.type = kwargs.get("block_type", "text")
     
     return chunk
 
+# Test fixtures
+@pytest.fixture
+def mock_openai_client():
+    """Mock OpenAI client."""
+    client = Mock()
+    client.chat = Mock()
+    client.chat.completions = Mock()
+    return client
 
-# Backward compatibility aliases
-create_mock_tool_call = create_mock_openai_tool_call
-create_mock_response = create_mock_openai_response
-create_mock_streaming_chunk = create_mock_openai_streaming_chunk
+@pytest.fixture  
+def mock_async_openai_client():
+    """Mock async OpenAI client."""
+    client = Mock()
+    client.chat = Mock()
+    client.chat.completions = AsyncMock()
+    return client
+
+@pytest.fixture
+def mock_anthropic_client():
+    """Mock Anthropic client."""
+    client = Mock()
+    client.messages = Mock()
+    return client
+
+@pytest.fixture
+def mock_async_anthropic_client():
+    """Mock async Anthropic client."""
+    client = Mock()
+    client.messages = AsyncMock()
+    return client
+
+@pytest.fixture
+def toolflow_openai_client(mock_openai_client):
+    """Toolflow-wrapped OpenAI client."""
+    if not TOOLFLOW_AVAILABLE:
+        pytest.skip("Toolflow not available")
+    return from_openai(mock_openai_client)
+
+@pytest.fixture
+def toolflow_anthropic_client(mock_anthropic_client):
+    """Toolflow-wrapped Anthropic client."""
+    if not TOOLFLOW_AVAILABLE:
+        pytest.skip("Toolflow not available")
+    return from_anthropic(mock_anthropic_client)
+
+@pytest.fixture(autouse=True)
+def reset_toolflow_config():
+    """Reset toolflow configuration before each test."""
+    if TOOLFLOW_AVAILABLE:
+        # Reset to defaults
+        toolflow.set_max_workers(4)
+        toolflow.set_async_yield_frequency(0)
+
+@pytest.fixture
+def sample_messages():
+    """Sample message list for testing."""
+    return [
+        {"role": "user", "content": "What's 10 + 5 and what's the weather in NYC?"}
+    ]
+
+# Pytest marks for test organization
+pytest.mark.unit = pytest.mark.unit
+pytest.mark.integration = pytest.mark.integration
+pytest.mark.e2e = pytest.mark.e2e
+pytest.mark.live = pytest.mark.live
+pytest.mark.slow = pytest.mark.slow 
