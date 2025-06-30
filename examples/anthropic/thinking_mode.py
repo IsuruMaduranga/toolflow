@@ -232,13 +232,13 @@ def main():
     
     try:
         # Basic examples
-        #basic_thinking()
-        #streaming_with_thinking()
-        #tools_with_thinking()
+        basic_thinking()
+        streaming_with_thinking()
+        tools_with_thinking()
         structured_output_with_thinking()
         
         # Async example
-        #asyncio.run(async_thinking())
+        asyncio.run(async_thinking())
         
         # Mode testing
         #test_both_modes()

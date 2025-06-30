@@ -72,109 +72,266 @@ class AnthropicHandler(TransportAdapter, MessageAdapter):
         
         return text, tool_calls, event
 
+    def _create_tool_call_object(self, tool_id: str, tool_name: str, tool_input: Dict[str, Any]):
+        """Create a tool call object that matches Anthropic's format for execution."""
+        return type('ToolCall', (), {
+            'id': tool_id,
+            'name': tool_name,
+            'input': tool_input
+        })()
+
+    def _accumulate_anthropic_streaming_content(
+        self,
+        chunk,
+        message_content: List[Dict[str, Any]],
+        accumulated_tool_calls: List[Any],
+        accumulated_json_strings: Dict[int, str],
+        graceful_error_handling: bool = True
+    ) -> bool:
+        """
+        Accumulate Anthropic streaming content and detect tool calls.
+        
+        Returns:
+            bool: True if tool calls were detected and completed, False otherwise
+        """
+        tool_calls_completed = False
+        
+        if chunk.type == "content_block_start":
+            content_block = chunk.content_block
+            
+            if content_block.type == "text":
+                message_content.append({
+                    "type": "text",
+                    "text": ""
+                })
+
+            elif content_block.type == "thinking":
+                message_content.append({
+                    "type": "thinking",
+                    "thinking": "",
+                    "signature": ""  # Will be filled when signature_delta arrives
+                })
+            elif content_block.type == "tool_use":
+                message_content.append({
+                    "type": "tool_use",
+                    "id": content_block.id,
+                    "name": content_block.name,
+                    "input": {}
+                })
+                accumulated_json_strings[chunk.index] = ""
+        
+        elif chunk.type == "content_block_delta":
+            delta = chunk.delta
+            content_index = chunk.index
+            
+            if delta.type == "text_delta":
+                # Update text content
+                if (content_index < len(message_content) and 
+                    message_content[content_index]["type"] == "text"):
+                    message_content[content_index]["text"] += str(delta.text)
+            
+            elif delta.type == "thinking_delta":
+                # Update thinking content
+                if (content_index < len(message_content) and 
+                    message_content[content_index]["type"] == "thinking"):
+                    message_content[content_index]["thinking"] += str(delta.thinking)
+            
+            elif delta.type == "signature_delta":
+                # Update thinking signature
+                if (content_index < len(message_content) and 
+                    message_content[content_index]["type"] == "thinking"):
+                    message_content[content_index]["signature"] += str(delta.signature)
+            
+            elif delta.type == "input_json_delta":
+                # Accumulate JSON for tool inputs
+                if content_index in accumulated_json_strings:
+                    accumulated_json_strings[content_index] += str(delta.partial_json)
+        
+        elif chunk.type == "content_block_stop":
+            content_index = chunk.index
+            
+            # If this was a tool_use block, parse the accumulated JSON
+            if (content_index in accumulated_json_strings and
+                content_index < len(message_content) and
+                message_content[content_index]["type"] == "tool_use"):
+                
+                try:
+                    tool_input = json.loads(accumulated_json_strings[content_index])
+                    message_content[content_index]["input"] = tool_input
+                    
+                    # Create a tool call object for execution
+                    tool_call = self._create_tool_call_object(
+                        message_content[content_index]["id"],
+                        message_content[content_index]["name"],
+                        tool_input
+                    )
+                    accumulated_tool_calls.append(tool_call)
+                    
+                except json.JSONDecodeError:
+                    # Handle malformed JSON gracefully
+                    if graceful_error_handling:
+                        message_content[content_index]["input"] = {"error": "Invalid JSON"}
+                    else:
+                        raise Exception(f"Invalid JSON in tool input: {accumulated_json_strings[content_index]}")
+                
+                # Clean up accumulated JSON
+                del accumulated_json_strings[content_index]
+        
+        elif chunk.type == "message_stop":
+            # Message is complete, check if we have any tool calls
+            if accumulated_tool_calls:
+                tool_calls_completed = True
+        
+        return tool_calls_completed
+
+    def _should_yield_chunk(self, chunk, return_full_response: bool, block_types: dict = None):
+        """
+        Determine if a chunk should be yielded and extract its content.
+        
+        Args:
+            chunk: The streaming chunk from Anthropic
+            return_full_response: Whether we're returning full response objects
+            block_types: Dict to track block types by index (optional)
+            
+        Returns:
+            Tuple of (should_yield: bool, content: str)
+        """
+        if return_full_response:
+            return True, chunk
+        
+        # Initialize block_types if not provided
+        if block_types is None:
+            block_types = {}
+        
+        # Handle different types of Anthropic streaming events
+        if hasattr(chunk, 'type'):
+            if chunk.type == 'content_block_delta':
+                if hasattr(chunk, 'delta'):
+                    # Handle thinking content
+                    if hasattr(chunk.delta, 'type') and chunk.delta.type == 'thinking_delta':
+                        if hasattr(chunk.delta, 'thinking'):
+                            return True, str(chunk.delta.thinking)
+                    
+                    # Handle text content
+                    elif hasattr(chunk.delta, 'type') and chunk.delta.type == 'text_delta':
+                        if hasattr(chunk.delta, 'text'):
+                            return True, str(chunk.delta.text)
+            
+            elif chunk.type == 'content_block_start':
+                if hasattr(chunk, 'content_block') and hasattr(chunk, 'index'):
+                    # Track block type by index
+                    block_types[chunk.index] = chunk.content_block.type
+                    
+                    # Handle thinking block start
+                    if chunk.content_block.type == 'thinking':
+                        return True, "\n<THINKING>\n"
+                    
+                    # Handle text block start  
+                    elif chunk.content_block.type == 'text':
+                        return True, ""  # No indicator for text start
+            
+            elif chunk.type == 'content_block_stop':
+                if hasattr(chunk, 'index'):
+                    # Check if this was a thinking block that's ending
+                    block_type = block_types.get(chunk.index)
+                    if block_type == 'thinking':
+                        # Clean up the tracking
+                        block_types.pop(chunk.index, None)
+                        return True, "\n</THINKING>\n\n"
+                    elif block_type == 'text':
+                        # Clean up the tracking
+                        block_types.pop(chunk.index, None)
+                        return True, "\n"  # Just add newline for text blocks
+        
+        # Fallback for other chunk types
+        if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+            return True, str(chunk.delta.text)
+        
+        return False, "" 
+
     def accumulate_streaming_response(self, response: Generator[RawMessageStreamEvent, None, None]) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
-        """Handle streaming response with proper tool call accumulation."""
-        accumulated_tool_calls = {}
+        """Handle streaming response with comprehensive tool call and thinking accumulation."""
+        # Use the sophisticated accumulation logic from the old working code
+        message_content = []
+        accumulated_tool_calls = []
+        accumulated_json_strings = {}
+        block_types = {}  # Track block types for proper thinking tag handling
         
         for event in self.stream_response(response):
-            text = None
+            # Accumulate content and detect tool calls using the old working logic
+            tool_calls_completed = self._accumulate_anthropic_streaming_content(
+                chunk=event,
+                message_content=message_content,
+                accumulated_tool_calls=accumulated_tool_calls,
+                accumulated_json_strings=accumulated_json_strings,
+                graceful_error_handling=True
+            )
+            
+            # Determine what to yield using the old working logic
+            should_yield, content = self._should_yield_chunk(event, False, block_types)
+            
+            # Yield content if available
+            text = content if should_yield and content else None
+            
+            # Yield tool calls when they are completed
             tool_calls = None
-            
-            if event.type == 'content_block_start':
-                if hasattr(event.content_block, 'type'):
-                    if event.content_block.type == 'text':
-                        text = ""  # Start text block
-                    elif event.content_block.type == 'tool_use':
-                        # Initialize tool call
-                        tool_call = {
-                            "id": event.content_block.id,
-                            "type": "function",
-                            "function": {
-                                "name": event.content_block.name,
-                                "arguments": {}
-                            }
+            if tool_calls_completed and accumulated_tool_calls:
+                # Convert tool calls to the expected format
+                tool_calls = []
+                for tool_call in accumulated_tool_calls:
+                    formatted_call = {
+                        "id": tool_call.id,
+                        "type": "function", 
+                        "function": {
+                            "name": tool_call.name,
+                            "arguments": tool_call.input
                         }
-                        accumulated_tool_calls[event.index] = tool_call
-            
-            elif event.type == 'content_block_delta':
-                if hasattr(event.delta, 'type'):
-                    if event.delta.type == 'text_delta':
-                        text = event.delta.text
-                    elif event.delta.type == 'input_json_delta':
-                        # Accumulate tool arguments
-                        if event.index in accumulated_tool_calls:
-                            tool_call = accumulated_tool_calls[event.index]
-                            if 'partial_json' not in tool_call['function']:
-                                tool_call['function']['partial_json'] = ""
-                            tool_call['function']['partial_json'] += event.delta.partial_json
-            
-            elif event.type == 'content_block_stop':
-                # If this was a tool use block, finalize the tool call
-                if event.index in accumulated_tool_calls:
-                    tool_call = accumulated_tool_calls[event.index]
-                    if 'partial_json' in tool_call['function']:
-                        try:
-                            tool_call['function']['arguments'] = json.loads(tool_call['function']['partial_json'])
-                            del tool_call['function']['partial_json']
-                        except json.JSONDecodeError:
-                            # If JSON parsing fails, keep as empty dict
-                            tool_call['function']['arguments'] = {}
-                    tool_calls = [tool_call]
+                    }
+                    tool_calls.append(formatted_call)
             
             yield text, tool_calls, event
 
     async def accumulate_streaming_response_async(self, response: AsyncGenerator[RawMessageStreamEvent, None]) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
-        """Handle async streaming response with proper tool call accumulation."""
-        accumulated_tool_calls = {}
+        """Handle async streaming response with comprehensive tool call and thinking accumulation."""
+        # Use the sophisticated accumulation logic from the old working code
+        message_content = []
+        accumulated_tool_calls = []
+        accumulated_json_strings = {}
+        block_types = {}  # Track block types for proper thinking tag handling
         
         async for event in self.stream_response_async(response):
-            text = None
+            # Accumulate content and detect tool calls using the old working logic
+            tool_calls_completed = self._accumulate_anthropic_streaming_content(
+                chunk=event,
+                message_content=message_content,
+                accumulated_tool_calls=accumulated_tool_calls,
+                accumulated_json_strings=accumulated_json_strings,
+                graceful_error_handling=True
+            )
+            
+            # Determine what to yield using the old working logic
+            should_yield, content = self._should_yield_chunk(event, False, block_types)
+            
+            # Yield content if available
+            text = content if should_yield and content else None
+            
+            # Yield tool calls when they are completed
             tool_calls = None
-            
-            if event.type == 'content_block_start':
-                if hasattr(event.content_block, 'type'):
-                    if event.content_block.type == 'text':
-                        text = ""  # Start text block
-                    elif event.content_block.type == 'tool_use':
-                        # Initialize tool call
-                        tool_call = {
-                            "id": event.content_block.id,
-                            "type": "function",
-                            "function": {
-                                "name": event.content_block.name,
-                                "arguments": {}
-                            }
+            if tool_calls_completed and accumulated_tool_calls:
+                # Convert tool calls to the expected format
+                tool_calls = []
+                for tool_call in accumulated_tool_calls:
+                    formatted_call = {
+                        "id": tool_call.id,
+                        "type": "function", 
+                        "function": {
+                            "name": tool_call.name,
+                            "arguments": tool_call.input
                         }
-                        accumulated_tool_calls[event.index] = tool_call
-            
-            elif event.type == 'content_block_delta':
-                if hasattr(event.delta, 'type'):
-                    if event.delta.type == 'text_delta':
-                        text = event.delta.text
-                    elif event.delta.type == 'input_json_delta':
-                        # Accumulate tool arguments
-                        if event.index in accumulated_tool_calls:
-                            tool_call = accumulated_tool_calls[event.index]
-                            if 'partial_json' not in tool_call['function']:
-                                tool_call['function']['partial_json'] = ""
-                            tool_call['function']['partial_json'] += event.delta.partial_json
-            
-            elif event.type == 'content_block_stop':
-                # If this was a tool use block, finalize the tool call
-                if event.index in accumulated_tool_calls:
-                    tool_call = accumulated_tool_calls[event.index]
-                    if 'partial_json' in tool_call['function']:
-                        try:
-                            tool_call['function']['arguments'] = json.loads(tool_call['function']['partial_json'])
-                            del tool_call['function']['partial_json']
-                        except json.JSONDecodeError:
-                            # If JSON parsing fails, keep as empty dict
-                            tool_call['function']['arguments'] = {}
-                    tool_calls = [tool_call]
+                    }
+                    tool_calls.append(formatted_call)
             
             yield text, tool_calls, event
-
-
 
     def build_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
         """Build an assistant message with tool calls for Anthropic format."""
@@ -186,6 +343,7 @@ class AnthropicHandler(TransportAdapter, MessageAdapter):
                 "text": text
             })
         
+        # Add tool calls
         for tool_call in tool_calls:
             content.append({
                 "type": "tool_use",
@@ -197,6 +355,20 @@ class AnthropicHandler(TransportAdapter, MessageAdapter):
         return {
             "role": "assistant",
             "content": content
+        }
+
+    def has_thinking_content(self, response: Message) -> bool:
+        """Check if a response contains thinking content blocks."""
+        for content_block in response.content:
+            if hasattr(content_block, 'type') and content_block.type == 'thinking':
+                return True
+        return False
+
+    def build_assistant_message_from_response(self, response: Message) -> Dict:
+        """Build an assistant message from the original response for thinking mode compatibility."""
+        return {
+            "role": "assistant",
+            "content": response.content
         }
 
     def build_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
