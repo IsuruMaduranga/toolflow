@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Generator, List, Dict, Callable
+from typing import Any, AsyncGenerator, Generator, List, Dict, Callable, Tuple, Optional, Union, Protocol
+from typing_extensions import Literal
 
 
 class TransportAdapter(ABC):
@@ -12,12 +13,12 @@ class TransportAdapter(ABC):
     """
 
     @abstractmethod
-    def call_api(self, **kwargs) -> Any:
+    def call_api(self, **kwargs: Any) -> Any:
         """Call the provider's synchronous API and return raw response."""
         pass
 
     @abstractmethod
-    async def call_api_async(self, **kwargs) -> Any:
+    async def call_api_async(self, **kwargs: Any) -> Any:
         """Call the provider's asynchronous API and return raw response."""
         pass
 
@@ -32,7 +33,7 @@ class TransportAdapter(ABC):
         pass
 
     @abstractmethod
-    def accumulate_streaming_response(self, response: Any) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
+    def accumulate_streaming_response(self, response: Any) -> Generator[Tuple[Optional[str], Optional[List[Dict[str, Any]]], Any], None, None]:
         """
         Handle streaming response with tool call accumulation.
         
@@ -43,7 +44,7 @@ class TransportAdapter(ABC):
         pass
 
     @abstractmethod
-    async def accumulate_streaming_response_async(self, response: Any) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
+    async def accumulate_streaming_response_async(self, response: Any) -> AsyncGenerator[Tuple[Optional[str], Optional[List[Dict[str, Any]]], Any], None]:
         """
         Handle async streaming response with tool call accumulation.
         
@@ -71,33 +72,33 @@ class MessageAdapter(ABC):
     """
 
     @abstractmethod
-    def parse_response(self, response: Any) -> tuple[str | None, List[Dict], Any]:
+    def parse_response(self, response: Any) -> Tuple[Optional[str], List[Dict[str, Any]], Any]:
         """Parse a complete response into (text, tool_calls, raw_response)."""
         pass
 
     @abstractmethod
-    def parse_stream_chunk(self, chunk: Any) -> tuple[str | None, List[Dict] | None, Any]:
+    def parse_stream_chunk(self, chunk: Any) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]], Any]:
         """Parse a streaming chunk into (text, tool_calls, raw_chunk)."""
         pass
 
     @abstractmethod
-    def build_assistant_message(self, text: str | None, tool_calls: List[Dict], original_response: Any = None) -> Dict:
+    def build_assistant_message(self, text: Optional[str], tool_calls: List[Dict[str, Any]], original_response: Any = None) -> Dict[str, Any]:
         """Build an assistant message with tool calls for the conversation."""
         pass
 
     @abstractmethod
-    def build_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
+    def build_tool_result_messages(self, tool_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Build tool result messages for the conversation."""
         pass
 
     # Optional methods with default implementations
-    def parse_structured_output(self, tool_call: Dict, response_format: Any) -> Any:
+    def parse_structured_output(self, tool_call: Dict[str, Any], response_format: Any) -> Any:
         """Handle the structured output from the tool call."""
         tool_arguments = tool_call["function"]["arguments"]
         response_data = tool_arguments.get('response', tool_arguments)
         return response_format.model_validate(response_data)
 
-    def get_response_format_tool(self, response_format: Any) -> Dict:
+    def get_response_format_tool(self, response_format: Any) -> Optional[Callable[..., str]]:
         """Get the response format tool schema."""
         from .utils import get_structured_output_tool
         if not response_format:
@@ -106,12 +107,12 @@ class MessageAdapter(ABC):
             return get_structured_output_tool(response_format)
         raise ValueError(f"Response format {response_format} is not a Pydantic model")
 
-    def get_tool_schema(self, tool: Any) -> Dict:
+    def get_tool_schema(self, tool: Any) -> Dict[str, Any]:
         """Get the tool schema for the tool."""
         from .utils import get_tool_schema
         return get_tool_schema(tool)
 
-    def prepare_tool_schemas(self, tools: List[Any]) -> tuple[List[Dict], Dict]:
+    def prepare_tool_schemas(self, tools: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Prepare tool schemas and tool map."""
         import inspect
         from .constants import RESPONSE_FORMAT_TOOL_NAME
@@ -143,4 +144,10 @@ class MessageAdapter(ABC):
                     continue
                 else:
                     raise ValueError(f"Tool {tool} is not a function")
-        return tool_schemas, tool_map 
+        return tool_schemas, tool_map
+
+class Handler(TransportAdapter, MessageAdapter):
+    """
+    Handler for handling the transport and message processing.
+    """
+    pass

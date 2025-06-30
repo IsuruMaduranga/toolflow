@@ -1,13 +1,16 @@
 # src/toolflow/core/utils.py
-from typing import Dict, Any, List
+from typing import Dict, Any, Tuple, Callable, get_origin, get_args, Optional
+from typing_extensions import Annotated
 from .constants import DEFAULT_PARAMS, RESPONSE_FORMAT_TOOL_NAME
 import inspect
-from typing import Callable, Annotated, get_origin, get_args, Any
+
+__all__ = ['filter_toolflow_params', 'get_structured_output_tool', 'get_tool_schema', 'RESPONSE_FORMAT_TOOL_NAME']
+
 from pydantic import BaseModel, create_model, Field
 from pydantic.fields import FieldInfo
 from docstring_parser import parse
 
-def filter_toolflow_params(**kwargs) -> tuple[Dict[str, Any], int, bool, Any, bool, bool]:
+def filter_toolflow_params(**kwargs: Any) -> Tuple[Dict[str, Any], int, bool, Any, bool, bool]:
     """Extract toolflow-specific params and return as easily unpackable tuple."""
     filtered_kwargs = kwargs.copy()
     
@@ -21,13 +24,13 @@ def filter_toolflow_params(**kwargs) -> tuple[Dict[str, Any], int, bool, Any, bo
     # Return a tuple of the filtered kwargs and toolflow params
     return filtered_kwargs, max_tool_calls, parallel_tool_execution, response_format, full_response, graceful_error_handling
 
-def get_structured_output_tool(pydantic_model: Any) -> Callable:
+def get_structured_output_tool(pydantic_model: Any) -> Callable[..., str]:
     """Get the tool definition for structured output."""
     def final_response_tool_internal(response: pydantic_model) -> str:
-        pass
+        return ""
 
     final_response_tool_internal.__name__ = RESPONSE_FORMAT_TOOL_NAME
-    final_response_tool_internal.__internal_tool__ = True
+    setattr(final_response_tool_internal, "__internal_tool__", True)
     final_response_tool_internal.__doc__ = f"""
     You must call this tool to provide your final response.
     Because user expects the final response in `{pydantic_model.__name__}` format.
@@ -36,11 +39,11 @@ def get_structured_output_tool(pydantic_model: Any) -> Callable:
     return final_response_tool_internal
 
 def get_tool_schema(
-    func: Callable,
-    name: str = None,
-    description: str = None,
+    func: Callable[..., Any],
+    name: Optional[str] = None,
+    description: Optional[str] = None,
     strict: bool = False
-) -> dict:
+) -> Dict[str, Any]:
     """
     Generates a truly unified OpenAI-compatible JSON schema from any Python function.
 
@@ -106,6 +109,7 @@ def get_tool_schema(
         fields_for_model[param_name] = (param_type, field_info)
 
     # 3. Create a single model from all collected fields and generate the schema
+    schema: Dict[str, Any]
     if not fields_for_model:
         schema = {"type": "object", "properties": {}, "required": []}
     else:

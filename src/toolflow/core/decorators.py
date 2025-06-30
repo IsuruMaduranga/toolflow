@@ -4,8 +4,8 @@ Decorators for tool registration.
 
 from typing import Callable, Optional, TypeVar, Union
 from functools import wraps
-from .core.utils import get_tool_schema
-from .core.constants import RESPONSE_FORMAT_TOOL_NAME
+from .utils import get_tool_schema
+from .constants import RESPONSE_FORMAT_TOOL_NAME
 
 F = TypeVar('F', bound=Callable)
 

@@ -1,12 +1,10 @@
 # src/toolflow/core/execution_loops.py
-from typing import List, Dict, Any, Generator, AsyncGenerator, Union
+from typing import Any, Generator, AsyncGenerator
 import asyncio
-from .adapters import TransportAdapter, MessageAdapter
+from .adapters import Handler
+from .utils import filter_toolflow_params
+from .constants import RESPONSE_FORMAT_TOOL_NAME
 from .tool_execution import execute_tools, execute_tools_async, MaxToolCallsError
-from .utils import filter_toolflow_params, RESPONSE_FORMAT_TOOL_NAME
-
-# Type alias for handlers that implement both adapters
-Handler = Union[TransportAdapter, MessageAdapter]
 
 # ===== GLOBAL ASYNC YIELD FREQUENCY CONFIGURATION =====
 

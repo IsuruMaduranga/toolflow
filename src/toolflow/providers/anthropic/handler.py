@@ -4,9 +4,9 @@ from typing import Any, List, Dict, Generator, AsyncGenerator
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import Message, RawMessageStreamEvent
 
-from ...core.adapters import TransportAdapter, MessageAdapter
+from toolflow.core import Handler
 
-class AnthropicHandler(TransportAdapter, MessageAdapter):
+class AnthropicHandler(Handler):
     def __init__(self, client: Anthropic | AsyncAnthropic, original_create):
         self.client = client
         self.original_create = original_create

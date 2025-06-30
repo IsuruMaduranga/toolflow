@@ -14,7 +14,7 @@ class MaxToolCallsError(Exception):
     This allows callers to catch this specific case and potentially increase
     the max_tool_calls budget or handle the scenario appropriately.
     """
-    def __init__(self, message: str, max_tool_calls: int = None):
+    def __init__(self, message: str, max_tool_calls: Optional[int] = None):
         super().__init__(message)
         self.max_tool_calls = max_tool_calls
 
@@ -64,7 +64,9 @@ def _get_sync_executor() -> ThreadPoolExecutor:
                 max_workers=max_workers,
                 thread_name_prefix="toolflow-"
             )
-        return _custom_executor if _custom_executor else _global_executor
+        result = _custom_executor if _custom_executor else _global_executor
+        assert result is not None  # Should never be None due to logic above
+        return result
 
 def _get_async_executor() -> Optional[ThreadPoolExecutor]:
     """
@@ -77,11 +79,11 @@ def _get_async_executor() -> Optional[ThreadPoolExecutor]:
 # ===== TOOL EXECUTION FUNCTIONS =====
 
 def execute_tools(
-    tool_calls: List[Dict],
-    tool_map: Dict[str, Callable],
+    tool_calls: List[Dict[str, Any]],
+    tool_map: Dict[str, Callable[..., Any]],
     parallel: bool = False,
     graceful_error_handling: bool = True
-) -> List[Dict]:
+) -> List[Dict[str, Any]]:
     """
     Executes tool calls synchronously.
     
@@ -147,10 +149,10 @@ def execute_tools(
 
 
 async def execute_tools_async(
-    tool_calls: List[Dict],
+    tool_calls: List[Dict[str, Any]],
     tool_map: Dict[str, Callable[..., Any]],
     graceful_error_handling: bool = True
-) -> List[Dict]:
+) -> List[Dict[str, Any]]:
     """
     Executes tool calls asynchronously, handling both sync and async tools.
     
@@ -166,7 +168,7 @@ async def execute_tools_async(
         graceful_error_handling: If True, return error messages; if False, raise exceptions
     """
     sync_tool_calls = []
-    async_tool_tasks: List[Coroutine] = []
+    async_tool_tasks: List[Coroutine[Any, Any, Dict[str, Any]]] = []
 
     unknown_tool_results = []
     
@@ -238,7 +240,7 @@ async def execute_tools_async(
     return sync_results + async_results + unknown_tool_results
 
 
-def _run_sync_tool(tool_call: Dict, tool_func: Callable, graceful_error_handling: bool = True) -> Dict:
+def _run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], graceful_error_handling: bool = True) -> Dict[str, Any]:
     try:
         result = tool_func(**tool_call["function"]["arguments"])
         return {"tool_call_id": tool_call["id"], "output": result}
@@ -252,7 +254,7 @@ def _run_sync_tool(tool_call: Dict, tool_func: Callable, graceful_error_handling
         else:
             raise
 
-async def _run_async_tool(tool_call: Dict, tool_func: Callable[..., Coroutine], graceful_error_handling: bool = True) -> Dict:
+async def _run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Coroutine[Any, Any, Any]], graceful_error_handling: bool = True) -> Dict[str, Any]:
     try:
         result = await tool_func(**tool_call["function"]["arguments"])
         return {"tool_call_id": tool_call["id"], "output": result}

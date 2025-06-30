@@ -4,8 +4,7 @@ from typing import Any, List, Dict, overload, Iterable, AsyncIterable
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
-from ...core.mixins import CreateMixin
-from ...core.utils import filter_toolflow_params
+from toolflow.core import CreateMixin
 from .handler import OpenAIHandler
 
 # --- Synchronous Wrappers ---

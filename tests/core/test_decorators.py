@@ -4,7 +4,7 @@ Tests for the @tool decorator functionality.
 import pytest
 import asyncio
 from typing import List
-from toolflow.decorators import tool
+from toolflow import tool
 
 
 class TestToolDecorator:

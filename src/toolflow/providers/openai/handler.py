@@ -5,9 +5,9 @@ from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 
-from ...core.adapters import TransportAdapter, MessageAdapter
+from toolflow.core import Handler
 
-class OpenAIHandler(TransportAdapter, MessageAdapter):
+class OpenAIHandler(Handler):
     def __init__(self, client: OpenAI | AsyncOpenAI, original_create):
         self.client = client
         self.original_create = original_create
