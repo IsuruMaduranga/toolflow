@@ -8,6 +8,7 @@ from .core.tool_execution import (
     set_max_workers,
     get_max_workers,
     set_executor,
+    MaxToolCallsError,
 )
 from .core.execution_loops import (
     set_async_yield_frequency,
@@ -33,4 +34,7 @@ __all__ = [
     
     # Utilities and decorators
     "tool",
+    
+    # Exceptions
+    "MaxToolCallsError",
 ]

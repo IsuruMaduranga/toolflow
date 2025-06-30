@@ -2,7 +2,7 @@
 from typing import List, Dict, Any, Generator, AsyncGenerator, Union
 import asyncio
 from .adapters import TransportAdapter, MessageAdapter
-from .tool_execution import execute_tools, execute_tools_async
+from .tool_execution import execute_tools, execute_tools_async, MaxToolCallsError
 from .utils import filter_toolflow_params, RESPONSE_FORMAT_TOOL_NAME
 
 # Type alias for handlers that implement both adapters
@@ -88,7 +88,7 @@ def sync_execution_loop(
                         return parsed
                 except json.JSONDecodeError as e:
                     # If JSON parsing fails when response_format is specified, raise an error
-                    raise ValueError(f"Invalid JSON in response when response_format is specified: {e}") from e
+                    raise ValueError(f"Response parsing failed to get structured output: {e}") from e
                 except Exception:
                     # Re-raise validation errors and other exceptions
                     raise
@@ -107,7 +107,9 @@ def sync_execution_loop(
         tool_results = execute_tools(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
         messages.extend(handler.build_tool_result_messages(tool_results))
 
-    raise Exception("Max tool calls reached without a valid response")
+    if response_format:
+        raise MaxToolCallsError("Max tool calls reached without getting structured output. Try increasing the max_tool_calls parameter.", max_tool_calls)
+    raise MaxToolCallsError("Max tool calls reached before completing the response. Try increasing the max_tool_calls parameter.", max_tool_calls)
 
 async def async_execution_loop(
     handler: Handler,
@@ -123,6 +125,8 @@ async def async_execution_loop(
      graceful_error_handling) = filter_toolflow_params(**kwargs)
     
     tools = kwargs.get("tools", [])
+    if "messages" not in kwargs:
+        kwargs["messages"] = []
     
     response_format_tool = handler.get_response_format_tool(response_format)
     
@@ -173,7 +177,7 @@ async def async_execution_loop(
                         return parsed
                 except json.JSONDecodeError as e:
                     # If JSON parsing fails when response_format is specified, raise an error
-                    raise ValueError(f"Invalid JSON in response when response_format is specified: {e}") from e
+                    raise ValueError(f"Response parsing failed to get structured output: {e}") from e
                 except Exception:
                     # Re-raise validation errors and other exceptions
                     raise
@@ -185,14 +189,16 @@ async def async_execution_loop(
                     # Extract the structured data from the tool call arguments
                     parsed = handler.parse_structured_output(tool_call, response_format)
                     return raw_response if full_response else parsed
-
+            
         # Add assistant message with tool calls to conversation  
         kwargs["messages"].append(handler.build_assistant_message(text, tool_calls, raw_response))
         
         tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling)
         kwargs["messages"].extend(handler.build_tool_result_messages(tool_results))
 
-    raise Exception("Max tool calls reached without a valid response")
+    if response_format:
+        raise MaxToolCallsError("Max tool calls reached without getting structured output. Try increasing the max_tool_calls parameter.", max_tool_calls)
+    raise MaxToolCallsError("Max tool calls reached before completing the response. Try increasing the max_tool_calls parameter.", max_tool_calls)
 
 def sync_streaming_execution_loop(
     handler: Handler,
@@ -263,7 +269,9 @@ def sync_streaming_execution_loop(
                         return parsed if not full_response else {"parsed": parsed}
             
             # Add assistant message with tool calls to conversation
-            messages.append(handler.build_assistant_message(accumulated_content, accumulated_tool_calls, None))
+            # Use None for content if no text was accumulated to preserve context for summarization
+            content = accumulated_content if accumulated_content else None
+            messages.append(handler.build_assistant_message(content, accumulated_tool_calls, None))
             
             # Execute tools
             tool_results = execute_tools(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
@@ -273,14 +281,14 @@ def sync_streaming_execution_loop(
             kwargs["messages"] = messages
             remaining_tool_calls -= 1
             
-            # Continue the loop for next streaming response
+            # Continue the loop for next streaming response (accumulators reset at loop start)
             continue
         else:
             # No tool calls, streaming is complete
             break
     
     if remaining_tool_calls <= 0:
-        raise Exception("Max tool calls reached without a valid response")
+        raise MaxToolCallsError("Max tool calls reached without a valid response", max_tool_calls)
 
 def async_streaming_execution_loop(
     handler: Handler,
@@ -288,11 +296,11 @@ def async_streaming_execution_loop(
 ) -> AsyncGenerator[Any, None]:
     """Asynchronous streaming execution loop with tool calling support."""
     (kwargs,
-    max_tool_calls,
-    parallel_tool_execution, # We ignore this in async case
-    response_format,
-    full_response,
-    graceful_error_handling) = filter_toolflow_params(**kwargs)
+     max_tool_calls,
+     parallel_tool_execution,
+     response_format,
+     full_response,
+     graceful_error_handling) = filter_toolflow_params(**kwargs)
 
     async def internal_generator():
         
@@ -368,7 +376,9 @@ def async_streaming_execution_loop(
                             return
                 
                 # Add assistant message with tool calls to conversation
-                messages.append(handler.build_assistant_message(accumulated_content, accumulated_tool_calls, None))
+                # Use None for content if no text was accumulated to preserve context for summarization
+                content = accumulated_content if accumulated_content else None
+                messages.append(handler.build_assistant_message(content, accumulated_tool_calls, None))
                 
                 # Execute tools (this properly yields via asyncio.gather/run_in_executor)
                 tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling)
@@ -378,13 +388,13 @@ def async_streaming_execution_loop(
                 kwargs["messages"] = messages
                 remaining_tool_calls -= 1
                 
-                # Continue the loop for next streaming response
+                # Continue the loop for next streaming response (accumulators reset at loop start)
                 continue
             else:
                 # No tool calls, streaming is complete
                 break
         
         if remaining_tool_calls <= 0:
-            raise Exception("Max tool calls reached without a valid response")
+            raise MaxToolCallsError("Max tool calls reached without a valid response", max_tool_calls)
     
     return internal_generator()

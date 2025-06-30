@@ -126,9 +126,10 @@ class MessageAdapter(ABC):
                     raise ValueError(f"Tool {tool} is a builtin function. You cannot use it as a tool.")
                 if callable(tool):
                     # Check for existing metadata (from decorator OR previous caching)
-                    if hasattr(tool, "_tool_metadata"):
+                    # Use try/except pattern for thread-safety to avoid race conditions
+                    try:
                         schema = tool._tool_metadata
-                    else:
+                    except AttributeError:
                         schema = self.get_tool_schema(tool)
                         # Cache for future use, but only for non-built-in functions
                         tool._tool_metadata = schema

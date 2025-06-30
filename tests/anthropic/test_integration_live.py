@@ -37,6 +37,7 @@ except ImportError:
     BaseModel = None
 
 import toolflow
+from toolflow import MaxToolCallsError
 
 
 # Skip all tests if Anthropic API key is not available
@@ -539,7 +540,7 @@ class TestAnthropicErrorHandling:
                 return f"Call {call_count}: {task}. Please call me again with task 'continue'"
             return f"Final call {call_count}: {task}"
         
-        with pytest.raises(Exception, match="Max tool calls reached"):
+        with pytest.raises(MaxToolCallsError, match="Max tool calls reached"):
             client.messages.create(
                 model="claude-3-5-haiku-20241022",
                 max_tokens=1024,

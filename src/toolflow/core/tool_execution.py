@@ -5,6 +5,19 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Callable, Any, Coroutine, Optional
 
+# ===== CUSTOM EXCEPTIONS =====
+
+class MaxToolCallsError(Exception):
+    """
+    Raised when the maximum number of tool calls is reached without completion.
+    
+    This allows callers to catch this specific case and potentially increase
+    the max_tool_calls budget or handle the scenario appropriately.
+    """
+    def __init__(self, message: str, max_tool_calls: int = None):
+        super().__init__(message)
+        self.max_tool_calls = max_tool_calls
+
 # ===== GLOBAL EXECUTOR (SHARED BY SYNC AND ASYNC) =====
 
 _custom_executor: Optional[ThreadPoolExecutor] = None
@@ -182,11 +195,10 @@ async def execute_tools_async(
     sync_results = []
     if sync_tool_calls:
         loop = asyncio.get_running_loop()
-        executor = _get_async_executor()  # Custom executor or None (asyncio default)
         
         futures = [
             loop.run_in_executor(
-                executor,
+                _get_async_executor(), # Custom executor or None (asyncio default)
                 _run_sync_tool,
                 call,
                 tool_map[call["function"]["name"]],
@@ -194,10 +206,34 @@ async def execute_tools_async(
             )
             for call in sync_tool_calls
         ]
-        sync_results = await asyncio.gather(*futures)
+        
+        if graceful_error_handling:
+            sync_results = await asyncio.gather(*futures)
+        else:
+            # When graceful_error_handling=False, preserve original stack traces
+            sync_results = []
+            for future in futures:
+                try:
+                    result = await future
+                    sync_results.append(result)
+                except Exception:
+                    # Re-raise the original exception to preserve stack trace
+                    raise
 
     # Run async tools concurrently
-    async_results = await asyncio.gather(*async_tool_tasks)
+    async_results = []
+    if async_tool_tasks:
+        if graceful_error_handling:
+            async_results = await asyncio.gather(*async_tool_tasks)
+        else:
+            # When graceful_error_handling=False, preserve original stack traces
+            for task in async_tool_tasks:
+                try:
+                    result = await task
+                    async_results.append(result)
+                except Exception:
+                    # Re-raise the original exception to preserve stack trace
+                    raise
 
     return sync_results + async_results + unknown_tool_results
 

@@ -3,6 +3,7 @@ import toolflow
 import json
 from pydantic import BaseModel, Field
 from typing import Annotated
+from toolflow.core.constants import RESPONSE_FORMAT_TOOL_NAME
 
 class UserDetails(BaseModel):
     """Detailed information about the user."""
@@ -38,7 +39,7 @@ def create_anthropic_response_tool(response_format):
     # 3. Manually apply the decorator to the function.
     # This is equivalent to using the @tool(...) syntax but gives us control over the timing.
     # The decorator's logic will now execute and see the correct, dynamic docstring.
-    decorated_tool = tool(name="final_response_tool_internal", internal=True)(final_response_tool_internal)
+    decorated_tool = tool(name=RESPONSE_FORMAT_TOOL_NAME, internal=True)(final_response_tool_internal)
 
     return decorated_tool
 

@@ -37,6 +37,7 @@ except ImportError:
     BaseModel = None
 
 import toolflow
+from toolflow import MaxToolCallsError
 
 
 # Skip all tests if OpenAI API key is not available
@@ -695,12 +696,35 @@ class TestOpenAIErrorHandling:
                 return f"Call {call_count}: {task}. Please call me again with task 'continue'"
             return f"Final call {call_count}: {task}"
         
-        with pytest.raises(Exception, match="Max tool calls reached"):
+        with pytest.raises(MaxToolCallsError, match="Max tool calls reached"):
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Call the recursive_tool with task 'start' and keep calling it until it's done. The tool will tell you when to call it again."}],
                 tools=[recursive_tool],
                 max_tool_calls=2  # Low limit
+            )
+
+    def test_max_tool_calls_with_weather(self, client):
+        """Test that max_tool_calls is respected"""
+        call_count = 0
+        
+        @toolflow.tool
+        def weather_loop_tool(location: str) -> str:
+            """A weather tool that always requests another call."""
+            nonlocal call_count
+            call_count += 1
+            if call_count < 5:  # Ensure it keeps requesting more calls
+                return f"Weather in {location}: Sunny, 72°F. Call #{call_count}. Please call me again with a different location like 'Tokyo' or 'London'."
+            return f"Weather in {location}: Sunny, 72°F. Final call #{call_count}."
+        
+        with pytest.raises(MaxToolCallsError, match="Max tool calls reached"):
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "user", "content": "Call the weather_loop_tool with location 'Paris' and keep calling it with different locations as the tool suggests."}
+                ],
+                tools=[weather_loop_tool],
+                max_tool_calls=2  # Very low limit to test the constraint
             )
 
 
