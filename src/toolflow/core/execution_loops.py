@@ -1,8 +1,24 @@
 # src/toolflow/core/execution_loops.py
 from typing import List, Dict, Any, Generator, AsyncGenerator
+import asyncio
 from .handlers import AbstractProviderHandler
 from .tool_execution import execute_tools, execute_tools_async
 from .utils import filter_toolflow_params, RESPONSE_FORMAT_TOOL_NAME
+
+# ===== GLOBAL ASYNC YIELD FREQUENCY CONFIGURATION =====
+
+_ASYNC_YIELD_FREQUENCY = 0  # Default: disabled
+
+def set_async_yield_frequency(frequency: int) -> None:
+    """Set the global async yield frequency for streaming operations."""
+    global _ASYNC_YIELD_FREQUENCY
+    if frequency < 0:
+        raise ValueError("async_yield_frequency must be >= 0")
+    _ASYNC_YIELD_FREQUENCY = frequency
+
+def get_async_yield_frequency() -> int:
+    """Get the current global async yield frequency."""
+    return _ASYNC_YIELD_FREQUENCY
 
 def sync_execution_loop(
     handler: AbstractProviderHandler,
@@ -209,9 +225,18 @@ def async_streaming_execution_loop(
         
         # If no tools, just do simple streaming
         if not tools:
+            chunk_count = 0
             response = await handler.call_api_async(**kwargs)
             async for text, _, chunk in handler.handle_streaming_response_async(response):
                 yield chunk if full_response else text
+                
+                # Yield control to event loop for concurrency
+                # By default disabled because we assume the underline provider handles this
+                yield_freq = get_async_yield_frequency()
+                if yield_freq > 0: 
+                    chunk_count += 1
+                    if chunk_count % yield_freq == 0:
+                        await asyncio.sleep(0)
             return
         
         # Prepare tools for tool calling
@@ -230,7 +255,7 @@ def async_streaming_execution_loop(
             
             accumulated_content = ""
             accumulated_tool_calls = []
-            
+            chunk_count = 0
             # Process the streaming response
             async for text, partial_tool_calls, chunk in handler.handle_streaming_response_async(response):
                 # Accumulate content for tool calls
@@ -246,6 +271,14 @@ def async_streaming_execution_loop(
                 # Accumulate tool calls (they come at the end of streaming)
                 if partial_tool_calls:
                     accumulated_tool_calls.extend(partial_tool_calls)
+                
+                # Yield control to event loop for concurrency (by default disabled)
+                # By default disabled because we assume the underline provider handles this
+                yield_freq = get_async_yield_frequency()
+                if yield_freq > 0:
+                    chunk_count += 1
+                    if chunk_count % yield_freq == 0:
+                        await asyncio.sleep(0)
             
             # Check if we have tool calls to execute
             if accumulated_tool_calls:
@@ -261,7 +294,7 @@ def async_streaming_execution_loop(
                 # Add assistant message with tool calls to conversation
                 messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
                 
-                # Execute tools
+                # Execute tools (this properly yields via asyncio.gather/run_in_executor)
                 tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling)
                 messages.extend(handler.create_tool_result_messages(tool_results))
                 

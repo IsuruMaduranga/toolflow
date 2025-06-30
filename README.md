@@ -251,24 +251,26 @@ def database_query(table: str) -> str:
 # Multiple tools with different execution times
 tools = [slow_api_call, fast_calculation, database_query]
 
-# Sequential: ~3+ seconds
-result = client.chat.completions.create(
+# Sequential execution (default for synchronous execution)
+start = time.time()
+result = openai_client.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Call the API with 'test', multiply 5*10, and query users table"}],
+    messages=messages,
     tools=tools,
-    parallel_tool_execution=False
+    parallel_tool_execution=False  # ~3 seconds
 )
+print(f"Sequential: {time.time() - start:.1f}s")
 
-# Parallel: ~2 seconds (limited by slowest tool)
-result = client.chat.completions.create(
+# Parallel execution (3-5x faster!)
+start = time.time()
+result = openai_client.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Call the API with 'test', multiply 5*10, and query users table"}],
+    messages=messages,
     tools=tools,
-    parallel_tool_execution=True
+    parallel_tool_execution=True  # ~1 second
 )
-
-# Check current settings
-print(f"Max workers: {toolflow.get_max_workers()}")
+print(f"Parallel: {time.time() - start:.1f}s")
+print("Result:", result)
 ```
 
 ## Async Support with Smart Concurrency
@@ -446,12 +448,78 @@ toolflow.from_openai(client, full_response=False)    # Wraps any OpenAI client
 toolflow.from_anthropic(client, full_response=False) # Wraps any Anthropic client
 ```
 
-### Global Configuration
-```python
-toolflow.set_max_workers(workers)    # Set thread pool size for parallel execution
-toolflow.get_max_workers()           # Get current thread pool size
-toolflow.set_executor(executor)      # Use custom ThreadPoolExecutor
+### Advanced Concurrency Control
+Current concurrency behavior is set to:
 ```
+📊 TOOLFLOW CONCURRENCY BEHAVIOR
+
+SYNC OPERATIONS
+├── Default: Sequential execution
+└── parallel_tool_execution=True
+                ├── No custom executor → Global ThreadPoolExecutor (4 workers)
+                ├── Change with toolflow.set_max_workers(workers)
+                └── Change thread pool with toolflow.set_executor(executor)
+
+ASYNC OPERATIONS  
+├── Default: Parallel by default
+    ├── For async tools: By default uses asyncio.gather()
+    ├── For sync tools: Uses asyncio.run_in_executor()
+    └── Change thread pool with toolflow.set_executor(executor)
+└── Streaming → Async yield frequency controls event loop yielding
+                ├── 0 (default) → Trust provider libraries
+                └── Set toolflow.set_async_yield_frequency(N) → Explicit asyncio.sleep(0) every N chunks
+```
+
+Configure Toolflow's concurrency behavior for optimal performance in your deployment:
+
+```python
+import toolflow
+from concurrent.futures import ThreadPoolExecutor
+
+# Thread Pool Configuration (for parallel tool execution)
+toolflow.set_max_workers(8)               # Set thread pool size (default: 4)
+toolflow.get_max_workers()                # Get current thread pool size
+toolflow.set_executor(custom_executor)    # Use custom ThreadPoolExecutor
+
+# Example: High-performance custom executor
+custom_executor = ThreadPoolExecutor(
+    max_workers=16,
+    thread_name_prefix="toolflow-custom-"
+)
+toolflow.set_executor(custom_executor)
+
+# Async Streaming Event Loop Control (disabled by default)
+toolflow.set_async_yield_frequency(frequency)  # 0=disabled, 1=every chunk, N=every N chunks
+```
+
+**Thread Pool Settings:**
+- **Default (4 workers)**: Good for most applications
+- **High concurrency (8-16 workers)**: For applications with many concurrent tool calls
+- **Custom executor**: Full control over thread pool behavior
+
+**Async Yield Frequency:**
+- **0 (default)**: Disabled - trusts underlying provider libraries for proper event loop yielding
+- **1**: Yield after every chunk - maximum responsiveness for high-concurrency FastAPI deployments
+- **N**: Yield every N chunks - custom balance between performance and responsiveness
+
+```python
+# Example: Configure for high-concurrency FastAPI deployment
+toolflow.set_max_workers(12)              # More threads for parallel tools
+toolflow.set_async_yield_frequency(1)     # Yield after every chunk for responsiveness
+
+# Example: Configure for maximum performance
+toolflow.set_max_workers(16)              # Maximum parallel tool execution
+toolflow.set_async_yield_frequency(0)     # Trust provider libraries (default)
+
+# Example: Configure for moderate concurrency
+toolflow.set_max_workers(6)               # Moderate thread pool
+toolflow.set_async_yield_frequency(0)     # Default yielding behavior
+```
+
+**When to adjust async yield frequency:**
+- **High-concurrency FastAPI** (100+ simultaneous streams): Set to `1`
+- **Standard deployments**: Keep default `0`
+- **Performance-critical**: Keep default `0`
 
 ### Enhanced Parameters
 All standard SDK parameters work unchanged, plus these additions:
