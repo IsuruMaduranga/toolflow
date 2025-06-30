@@ -1,8 +1,59 @@
-# Toolflow
+## Toolflow - Add auto tool calling and structured outputs to official LLM SDKs
 
-**A lightweight drop-in replacement for OpenAI and Anthropic SDKs ( Many more to come) with automatic parallel tool calling and structured responses.**
+[![PyPI version](https://badge.fury.io/py/toolflow.svg)](https://badge.fury.io/py/toolflow)
+[![Python versions](https://img.shields.io/pypi/pyversions/toolflow.svg)](https://pypi.org/project/toolflow/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Connect on LinkedIn](https://img.shields.io/badge/LinkedIn-Isuru%20Wijesiri-blue?logo=linkedin)](https://www.linkedin.com/in/isuruwijesiri/)
 
-Stop wrestling with bloated frameworks for tool calling. Toolflow enhances the official SDKs you already know without breaking any existing functionality - just add powerful auto-parallel tool calling and structured outputs with zero migration effort.
+**🔗 [GitHub](https://github.com/IsuruMaduranga/toolflow)** • **📘 [Documentation](https://github.com/IsuruMaduranga/toolflow/tree/main/examples)**
+
+
+
+Toolflow is a blazing-fast, lightweight drop-in replacement for the OpenAI and Anthropic SDKs — adding automatic parallel tool calling, structured Pydantic outputs, and smart response modes with zero breaking changes.
+Stop battling bloated tool-calling frameworks. Toolflow supercharges the official SDKs you already use, without sacrificing compatibility or simplicity.
+
+## Installation
+
+```bash
+pip install toolflow
+```
+
+## Quick Start
+
+```python
+import toolflow
+from openai import OpenAI
+
+# Only change needed!
+client = toolflow.from_openai(OpenAI())
+
+# Now you have auto-parallel tools + structured outputs
+def get_weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"Weather in {city}: Sunny, 72°F"
+
+result = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What's the weather in NYC and London?"}],
+    tools=[get_weather]
+)
+print(result)  # Direct string output
+
+# Or get a weather report with structured output
+class WeatherReport(BaseModel):
+    weather: str
+    temperature: int
+
+result = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What's the weather in NYC and London?"}],
+    tools=[get_weather],
+    response_format=WeatherReport
+)
+print(result)  # You get a WeatherReport object
+```
+
+Find more [examples](https://github.com/IsuruMaduranga/toolflow/tree/main/examples) in the repository.
 
 ## Why Toolflow?
 
@@ -10,15 +61,11 @@ Stop wrestling with bloated frameworks for tool calling. Toolflow enhances the o
 ✅ **Zero breaking changes** - All official SDK features preserved  
 ✅ **Auto-parallel tool calling** - Functions become tools with automatic concurrency  
 ✅ **Structured outputs** - Pass Pydantic models, get typed responses  
+✅ **Advanced reasoning support** - Supports OpenAI reasoning models & Anthropic extended thinking  
 ✅ **No bloat** - Lightweight alternative to heavy frameworks  
 ✅ **Unified interface** - Same code works across providers  
 ✅ **Smart response modes** - Choose between simplified or full SDK responses
-
-## Installation
-
-```bash
-pip install toolflow
-```
+✅ **Other SDKS coming soon** - We're working on adding support for other LLM SDKs (Groq, Gemini, etc. )
 
 ## Before & After
 
@@ -90,8 +137,8 @@ messages = [{"role": "user", "content": "What's the weather and population in NY
 
 # Sequential execution (default for synchronous execution)
 start = time.time()
-result = openai_client.chat.completions.create(
-    model="gpt-4o-mini",
+result = anthropic_client.messages.create(
+    model="claude-3-5-sonnet-20241022",
     messages=messages,
     tools=tools,
     parallel_tool_execution=False  # ~3 seconds
@@ -100,8 +147,8 @@ print(f"Sequential: {time.time() - start:.1f}s")
 
 # Parallel execution (3-5x faster!)
 start = time.time()
-result = openai_client.chat.completions.create(
-    model="gpt-4o-mini",
+result = anthropic_client.messages.create(
+    model="claude-3-5-sonnet-20241022",
     messages=messages,
     tools=tools,
     parallel_tool_execution=True  # ~1 second
@@ -189,72 +236,99 @@ for chunk in stream:
         print(chunk.choices[0].delta.content, end="")  # Original SDK behavior
 ```
 
-## All Your Existing Code Still Works
+## Advanced AI Capabilities
 
-Toolflow doesn't break anything - it's a true drop-in replacement:
+### OpenAI Reasoning Mode with Tools & Structured Output
+
+Toolflow fully supports OpenAI's reasoning models (o4-mini, o3) with `reasoning_effort` parameter, seamlessly integrated with auto-parallel tool calling and structured outputs:
 
 ```python
-# All standard SDK features work unchanged
+from pydantic import BaseModel
+from typing import List
+
+class AnalysisResult(BaseModel):
+    solution: str
+    reasoning_steps: List[str]
+    confidence: float
+
+def calculate(expression: str) -> float:
+    """Safely evaluate mathematical expressions."""
+    return eval(expression.replace("^", "**"))
+
+def analyze_data(data: List[float]) -> dict:
+    """Analyze numerical data and return statistics."""
+    return {
+        "mean": sum(data) / len(data),
+        "min": min(data),
+        "max": max(data),
+        "count": len(data)
+    }
+
+# Reasoning mode with tools and structured output
 client = toolflow.from_openai(OpenAI())
-
-# All parameters work exactly as documented
-response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Hello"}],
-    temperature=0.7,
-    max_tokens=150,
-    top_p=1.0,
-    frequency_penalty=0,
-    presence_penalty=0,
-    full_response=True
+result = client.chat.completions.create(
+    model="o4-mini",
+    reasoning_effort="medium",  # OpenAI reasoning parameter
+    max_completion_tokens=4000,
+    messages=[{
+        "role": "user", 
+        "content": "Analyze sales data [100, 120, 110, 130, 125] and calculate 15% growth projection. Provide detailed reasoning."
+    }],
+    tools=[calculate, analyze_data],        # Auto-parallel tool execution
+    response_format=AnalysisResult,         # Structured output
+    parallel_tool_execution=True
 )
+
+print(f"Solution: {result.solution}")
+print(f"Steps: {result.reasoning_steps}")
+print(f"Confidence: {result.confidence}")
 ```
 
-## Advanced Parallel Execution Control
+### Anthropic Extended Thinking with Tools & Structured Output
 
-Fine-tune parallel execution for optimal performance:
+Toolflow seamlessly supports Anthropic's extended thinking mode with automatic tool calling and structured responses:
 
 ```python
-import toolflow
+class ResearchFindings(BaseModel):
+    summary: str
+    key_insights: List[str]
+    recommendations: List[str]
 
-# Configure global thread pool
-toolflow.set_max_workers(8)  # Default is 4
+def search_web(query: str) -> str:
+    """Search for information (simulated)."""
+    return f"Research findings for: {query}"
 
-def slow_api_call(query: str) -> str:
-    time.sleep(2)  # Simulated slow API
-    return f"Result for: {query}"
+def analyze_trends(data: str) -> str:
+    """Analyze trends in data (simulated)."""
+    return f"Trend analysis: {data}"
 
-def fast_calculation(x: int, y: int) -> int:
-    return x * y
-
-def database_query(table: str) -> str:
-    time.sleep(1)  # Simulated DB query
-    return f"Data from {table}"
-
-# Multiple tools with different execution times
-tools = [slow_api_call, fast_calculation, database_query]
-
-# Sequential execution (default for synchronous execution)
-start = time.time()
-result = openai_client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=messages,
-    tools=tools,
-    parallel_tool_execution=False  # ~3 seconds
+# Extended thinking with tools and structured output
+anthropic_client = toolflow.from_anthropic(Anthropic())
+result = anthropic_client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    thinking=True,  # Anthropic extended thinking
+    max_tokens=4000,
+    messages=[{
+        "role": "user",
+        "content": "Research AI trends for 2025 and provide strategic recommendations."
+    }],
+    tools=[search_web, analyze_trends],     # Auto-parallel tool execution  
+    response_format=ResearchFindings,       # Structured output
+    parallel_tool_execution=True
 )
-print(f"Sequential: {time.time() - start:.1f}s")
 
-# Parallel execution (3-5x faster!)
-start = time.time()
-result = openai_client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=messages,
-    tools=tools,
-    parallel_tool_execution=True  # ~1 second
-)
-print(f"Parallel: {time.time() - start:.1f}s")
-print("Result:", result)
+print(f"Summary: {result.summary}")
+print(f"Insights: {result.key_insights}")
+print(f"Recommendations: {result.recommendations}")
 ```
+
+### Key Benefits
+
+- **Seamless Integration**: Reasoning/thinking modes work with all Toolflow features
+- **Auto-Parallel Tools**: Functions execute concurrently during reasoning
+- **Structured Output**: Get typed responses even with complex reasoning
+- **Zero Complexity**: Same simple interface as standard completions
+- **Performance**: Parallel tool execution reduces reasoning time
 
 ## Async Support with Smart Concurrency
 
@@ -346,42 +420,6 @@ for chunk in stream:
         print(chunk.choices[0].delta.content, end="")
 ```
 
-## Error Handling and Graceful Degradation
-
-Tools handle errors gracefully by default:
-
-```python
-def reliable_tool(data: str) -> str:
-    """A tool that always works."""
-    return f"Processed: {data}"
-
-def unreliable_tool(data: str) -> str:
-    """A tool that might fail."""
-    if "error" in data.lower():
-        raise ValueError("Something went wrong!")
-    return f"Success: {data}"
-
-# Graceful error handling (default)
-result = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Process 'good data' and 'error data'"}],
-    tools=[reliable_tool, unreliable_tool],
-    parallel_tool_execution=True
-)
-# LLM receives error messages and can adapt its response
-
-# Strict error handling
-try:
-    result = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Process 'error data'"}],
-        tools=[unreliable_tool],
-        graceful_error_handling=False  # Raises exceptions
-    )
-except ValueError as e:
-    print(f"Tool failed: {e}")
-```
-
 ## Migration Guide
 
 ### From OpenAI SDK
@@ -423,6 +461,160 @@ from openai import OpenAI
 client = toolflow.from_openai(OpenAI())
 ```
 
+## All Your Existing Code Still Works
+
+Toolflow doesn't break anything - it's a true drop-in replacement:
+
+```python
+# All standard SDK features work unchanged
+client = toolflow.from_openai(OpenAI())
+
+# All parameters work exactly as documented
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Hello"}],
+    temperature=0.7,
+    max_tokens=150,
+    top_p=1.0,
+    frequency_penalty=0,
+    presence_penalty=0,
+    full_response=True
+)
+```
+
+## Performance Comparison
+
+### Speed
+- **Toolflow**: 2-4x faster than sequential execution
+- **Native SDK**: Sequential execution
+
+### Memory Usage
+- **Toolflow**: ~5MB additional overhead
+- **Other bloated frameworks**: ~50MB+ additional overhead
+- **Native SDK**: Baseline
+
+## Why Not Other Bloated Frameworks?
+
+| Feature | Toolflow | Other  bloated frameworks |
+|---------|----------|-----------|
+| **Learning Curve** | Zero - same as OpenAI/Anthropic | Steep - new concepts |
+| **Migration Effort** | One line change | Complete rewrite |
+| **Bundle Size** | Lightweight (~5MB) | Heavy (~50MB+) |
+| **Official SDK Features** | 100% compatible | Limited/wrapped |
+| **Structured Outputs** | Built-in | Complex setup |
+| **Tool Calling** | Automatic parallel | Manual configuration |
+| **Performance** | Optimized thread pools | Variable |
+| **Response Modes** | Flexible (simple/full) | Fixed patterns |
+
+## Error Handling and Graceful Degradation
+
+Tools handle errors gracefully by default:
+
+```python
+def reliable_tool(data: str) -> str:
+    """A tool that always works."""
+    return f"Processed: {data}"
+
+def unreliable_tool(data: str) -> str:
+    """A tool that might fail."""
+    if "error" in data.lower():
+        raise ValueError("Something went wrong!")
+    return f"Success: {data}"
+
+# Graceful error handling (default)
+result = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Process 'good data' and 'error data'"}],
+    tools=[reliable_tool, unreliable_tool],
+    parallel_tool_execution=True
+)
+# LLM receives error messages and can adapt its response
+
+# Strict error handling
+try:
+    result = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "Process 'error data'"}],
+        tools=[unreliable_tool],
+        graceful_error_handling=False  # Raises exceptions
+    )
+except ValueError as e:
+    print(f"Tool failed: {e}")
+```
+
+## Advanced Parallel Execution Control
+
+Fine-tune parallel execution for optimal performance:
+
+```python
+import toolflow
+
+# Configure global thread pool
+toolflow.set_max_workers(8)  # Default is 4
+
+def slow_api_call(query: str) -> str:
+    time.sleep(2)  # Simulated slow API
+    return f"Result for: {query}"
+
+def fast_calculation(x: int, y: int) -> int:
+    return x * y
+
+def database_query(table: str) -> str:
+    time.sleep(1)  # Simulated DB query
+    return f"Data from {table}"
+
+# Multiple tools with different execution times
+tools = [slow_api_call, fast_calculation, database_query]
+
+# Sequential execution (default for synchronous execution)
+start = time.time()
+result = openai_client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=messages,
+    tools=tools,
+    parallel_tool_execution=False  # ~3 seconds
+)
+print(f"Sequential: {time.time() - start:.1f}s")
+
+# Parallel execution (3-5x faster!)
+start = time.time()
+result = openai_client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=messages,
+    tools=tools,
+    parallel_tool_execution=True  # ~1 second
+)
+print(f"Parallel: {time.time() - start:.1f}s")
+print("Result:", result)
+```
+
+## Current API Support & Limitations
+
+### Supported APIs
+
+**OpenAI:**
+- ✅ **Chat Completions API** - Full support with reasoning mode (`reasoning_effort`)
+- ✅ **Tool calling** - Auto-parallel execution with structured outputs
+- ✅ **Streaming** - Both simplified and full response modes
+- ✅ **Structured outputs** - Pydantic model integration
+
+**Anthropic:**
+- ✅ **Messages API** - Full support with extended thinking mode (`thinking=True`)
+- ✅ **Tool calling** - Auto-parallel execution with structured outputs  
+- ✅ **Streaming** - Both simplified and full response modes
+- ✅ **Structured outputs** - Pydantic model integration
+
+### Upcoming API Support
+
+**OpenAI Responses API (Preview):**
+- ⏳ **Not yet supported** - OpenAI's new stateful API (released early 2025)
+- 🔄 **Coming soon** - Will add support for this next-generation API
+- 📋 **Features**: Background tasks, hosted tools (web_search, file_search), MCP servers, image generation
+
+The [OpenAI Responses API](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/responses) is a new stateful API that combines the best of Chat Completions and Assistants APIs. While Toolflow currently supports the Chat Completions API with all its advanced features (including reasoning mode), we're working on adding Responses API support for its unique capabilities like hosted tools and background processing.
+
+**Current workaround:** Toolflow's auto-parallel tool calling and structured outputs provide similar benefits to the Responses API's hosted tools, with the added advantage of full local control over your functions.
+
 ## API Reference
 
 ### Client Wrappers
@@ -432,7 +624,6 @@ toolflow.from_anthropic(client, full_response=False) # Wraps any Anthropic clien
 ```
 
 ### Advanced Concurrency Control
-Current concurrency behavior is set to:
 ```
 📊 TOOLFLOW CONCURRENCY BEHAVIOR
 
@@ -538,40 +729,6 @@ def regular_function(param: str) -> str:
 - `full_response=False` (default): Returns string content or parsed Pydantic model
 - `full_response=True`: Returns the complete official SDK response object
 
-## Performance Comparison
-
-### Tool Execution Speed
-```python
-# Sequential execution 
-Sequential: 3.2s
-
-# Parallel execution (3 tools)
-Parallel: 1.1s
-Speedup: 2.9x
-
-# Async execution ( parallel by default)
-Async Parallel: 0.8s
-Speedup: 4.0x
-```
-
-### Memory Usage
-- **Toolflow**: ~5MB additional overhead
-- **LangChain**: ~50MB+ additional overhead
-- **Native SDK**: Baseline
-
-## Why Not LangChain?
-
-| Feature | Toolflow | LangChain |
-|---------|----------|-----------|
-| **Learning Curve** | Zero - same as OpenAI/Anthropic | Steep - new concepts |
-| **Migration Effort** | One line change | Complete rewrite |
-| **Bundle Size** | Lightweight (~5MB) | Heavy (~50MB+) |
-| **Official SDK Features** | 100% compatible | Limited/wrapped |
-| **Structured Outputs** | Built-in | Complex setup |
-| **Tool Calling** | Automatic parallel | Manual configuration |
-| **Performance** | Optimized thread pools | Variable |
-| **Response Modes** | Flexible (simple/full) | Fixed patterns |
-
 ## Development
 
 ```bash
@@ -593,6 +750,13 @@ export ANTHROPIC_API_KEY='your-key'
 python run_live_tests.py
 ```
 
+## 👤 Author
+
+Created and maintained by [Isuru Wijesiri](https://www.linkedin.com/in/isuruwijesiri/).  
+🔗 Follow me for updates on AI, open source, and developer tools:  
+- 💼 [LinkedIn](https://www.linkedin.com/in/isuruwijesiri/)  
+- 🧑‍💻 [GitHub](https://github.com/IsuruMaduranga)
+
 ## Contributing
 
 Contributions welcome! Please fork, create a feature branch, add tests, and submit a pull request.
@@ -603,4 +767,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Ready to upgrade?** Replace your SDK import and unlock powerful parallel tool calling + structured outputs with zero breaking changes.
+Toolflow is an open-source project by [Isuru Wijesiri](https://www.linkedin.com/in/isuruwijesiri/) — building tools that make AI development faster, cleaner, and more fun.
