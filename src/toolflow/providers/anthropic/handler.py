@@ -4,9 +4,9 @@ from typing import Any, List, Dict, Generator, AsyncGenerator
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import Message, RawMessageStreamEvent
 
-from ...core.handlers import AbstractProviderHandler
+from ...core.adapters import TransportAdapter, MessageAdapter
 
-class AnthropicHandler(AbstractProviderHandler):
+class AnthropicHandler(TransportAdapter, MessageAdapter):
     def __init__(self, client: Anthropic | AsyncAnthropic, original_create):
         self.client = client
         self.original_create = original_create
@@ -17,7 +17,18 @@ class AnthropicHandler(AbstractProviderHandler):
     async def call_api_async(self, **kwargs) -> Any:
         return await self.original_create(**kwargs)
 
-    def handle_response(self, response: Message) -> tuple[str | None, List[Dict], Any]:
+    def stream_response(self, response: Generator[RawMessageStreamEvent, None, None]) -> Generator[RawMessageStreamEvent, None, None]:
+        """Handle a streaming response and yield raw events."""
+        for event in response:
+            yield event
+
+    async def stream_response_async(self, response: AsyncGenerator[RawMessageStreamEvent, None]) -> AsyncGenerator[RawMessageStreamEvent, None]:
+        """Handle an async streaming response and yield raw events."""
+        async for event in response:
+            yield event
+
+    def parse_response(self, response: Message) -> tuple[str | None, List[Dict], Any]:
+        """Parse a complete response into (text, tool_calls, raw_response)."""
         text_content = ""
         tool_calls = []
         
@@ -32,10 +43,40 @@ class AnthropicHandler(AbstractProviderHandler):
         
         return text_content, tool_calls, response
 
-    def handle_streaming_response(self, response: Generator[RawMessageStreamEvent, None, None]) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
+    def parse_stream_chunk(self, event: RawMessageStreamEvent) -> tuple[str | None, List[Dict] | None, Any]:
+        """Parse a streaming event into (text, tool_calls, raw_event)."""
+        text = None
+        tool_calls = None
+        
+        if event.type == 'content_block_start':
+            if hasattr(event.content_block, 'type'):
+                if event.content_block.type == 'text':
+                    text = ""  # Start text block
+                elif event.content_block.type == 'tool_use':
+                    # Tool use started, but not complete yet
+                    tool_calls = None
+        
+        elif event.type == 'content_block_delta':
+            if hasattr(event.delta, 'type'):
+                if event.delta.type == 'text_delta':
+                    text = event.delta.text
+                elif event.delta.type == 'input_json_delta':
+                    # Tool arguments being streamed, not complete yet
+                    tool_calls = None
+        
+        elif event.type == 'content_block_stop':
+            # Content block finished, might be a complete tool call
+            # Note: Tool call completion needs to be handled by accumulation logic
+            # in the execution loop since Anthropic streams tool calls in parts
+            tool_calls = None
+        
+        return text, tool_calls, event
+
+    def accumulate_streaming_response(self, response: Generator[RawMessageStreamEvent, None, None]) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
+        """Handle streaming response with proper tool call accumulation."""
         accumulated_tool_calls = {}
         
-        for event in response:
+        for event in self.stream_response(response):
             text = None
             tool_calls = None
             
@@ -82,10 +123,11 @@ class AnthropicHandler(AbstractProviderHandler):
             
             yield text, tool_calls, event
 
-    async def handle_streaming_response_async(self, response: AsyncGenerator[RawMessageStreamEvent, None]) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
+    async def accumulate_streaming_response_async(self, response: AsyncGenerator[RawMessageStreamEvent, None]) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
+        """Handle async streaming response with proper tool call accumulation."""
         accumulated_tool_calls = {}
         
-        async for event in response:
+        async for event in self.stream_response_async(response):
             text = None
             tool_calls = None
             
@@ -132,8 +174,10 @@ class AnthropicHandler(AbstractProviderHandler):
             
             yield text, tool_calls, event
 
-    def create_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
-        """Create an assistant message with tool calls for Anthropic format."""
+
+
+    def build_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
+        """Build an assistant message with tool calls for Anthropic format."""
         content = []
         
         if text:
@@ -155,8 +199,8 @@ class AnthropicHandler(AbstractProviderHandler):
             "content": content
         }
 
-    def create_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
-        """Create tool result messages for Anthropic format."""
+    def build_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
+        """Build tool result messages for Anthropic format."""
         content = []
         for result in tool_results:
             content.append({

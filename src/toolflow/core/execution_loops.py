@@ -1,9 +1,12 @@
 # src/toolflow/core/execution_loops.py
-from typing import List, Dict, Any, Generator, AsyncGenerator
+from typing import List, Dict, Any, Generator, AsyncGenerator, Union
 import asyncio
-from .handlers import AbstractProviderHandler
+from .adapters import TransportAdapter, MessageAdapter
 from .tool_execution import execute_tools, execute_tools_async
 from .utils import filter_toolflow_params, RESPONSE_FORMAT_TOOL_NAME
+
+# Type alias for handlers that implement both adapters
+Handler = Union[TransportAdapter, MessageAdapter]
 
 # ===== GLOBAL ASYNC YIELD FREQUENCY CONFIGURATION =====
 
@@ -21,7 +24,7 @@ def get_async_yield_frequency() -> int:
     return _ASYNC_YIELD_FREQUENCY
 
 def sync_execution_loop(
-    handler: AbstractProviderHandler,
+    handler: Handler,
     **kwargs: Any,
 ) -> Any:
     """Synchronous execution loop for tool calling."""
@@ -40,7 +43,7 @@ def sync_execution_loop(
     
     if not tools and not response_format_tool:
         response = handler.call_api(**kwargs)
-        text, _, raw_response = handler.handle_response(response)
+        text, _, raw_response = handler.parse_response(response)
         return raw_response if full_response else text
     
     # If we have a response format tool, add it to tools
@@ -52,7 +55,7 @@ def sync_execution_loop(
     kwargs["tools"] = tool_schemas
     for _ in range(max_tool_calls):
         response = handler.call_api(**kwargs)
-        text, tool_calls, raw_response = handler.handle_response(response)
+        text, tool_calls, raw_response = handler.parse_response(response)
 
         if not tool_calls:
             # If no tool calls but response_format is specified, try to parse text as JSON
@@ -92,15 +95,15 @@ def sync_execution_loop(
                     return raw_response if full_response else parsed
 
         # Add assistant message with tool calls to conversation
-        messages.append(handler.create_assistant_message(text, tool_calls))
+        messages.append(handler.build_assistant_message(text, tool_calls))
         
         tool_results = execute_tools(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
-        messages.extend(handler.create_tool_result_messages(tool_results))
+        messages.extend(handler.build_tool_result_messages(tool_results))
 
     raise Exception("Max tool calls reached without a valid response")
 
 async def async_execution_loop(
-    handler: AbstractProviderHandler,
+    handler: Handler,
     **kwargs: Any,
 ) -> Any:
     """Asynchronous execution loop for tool calling."""
@@ -118,7 +121,7 @@ async def async_execution_loop(
     
     if not tools and not response_format_tool:
         response = await handler.call_api_async(**kwargs)
-        text, _, raw_response = handler.handle_response(response)
+        text, _, raw_response = handler.parse_response(response)
         return raw_response if full_response else text
     
     # If we have a response format tool, add it to tools
@@ -130,7 +133,7 @@ async def async_execution_loop(
     kwargs["tools"] = tool_schemas
     for _ in range(max_tool_calls):
         response = await handler.call_api_async(**kwargs)
-        text, tool_calls, raw_response = handler.handle_response(response)
+        text, tool_calls, raw_response = handler.parse_response(response)
 
         if not tool_calls:
             # If no tool calls but response_format is specified, try to parse text as JSON
@@ -170,15 +173,15 @@ async def async_execution_loop(
                     return raw_response if full_response else parsed
 
         # Add assistant message with tool calls to conversation
-        kwargs["messages"].append(handler.create_assistant_message(text, tool_calls))
+        kwargs["messages"].append(handler.build_assistant_message(text, tool_calls))
         
         tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling)
-        kwargs["messages"].extend(handler.create_tool_result_messages(tool_results))
+        kwargs["messages"].extend(handler.build_tool_result_messages(tool_results))
 
     raise Exception("Max tool calls reached without a valid response")
 
 def sync_streaming_execution_loop(
-    handler: AbstractProviderHandler,
+    handler: Handler,
     **kwargs: Any,
 ) -> Generator[Any, None, None]:
     """Synchronous streaming execution loop with tool calling support."""
@@ -195,9 +198,9 @@ def sync_streaming_execution_loop(
     # If no tools, just do simple streaming
     if not tools:
         response = handler.call_api(**kwargs)
-        for text, _, chunk in handler.handle_streaming_response(response):
+        for text, _, raw_chunk in handler.accumulate_streaming_response(response):
             if full_response:
-                yield chunk
+                yield raw_chunk
             elif text:
                 yield text
         return
@@ -220,14 +223,14 @@ def sync_streaming_execution_loop(
         accumulated_tool_calls = []
         
         # Process the streaming response
-        for text, partial_tool_calls, chunk in handler.handle_streaming_response(response):
+        for text, partial_tool_calls, raw_chunk in handler.accumulate_streaming_response(response):
             # Accumulate content for tool calls
             if text:
                 accumulated_content += text
             
             # Yield based on full_response setting
             if full_response:
-                yield chunk
+                yield raw_chunk
             elif text:
                 yield text
             
@@ -246,11 +249,11 @@ def sync_streaming_execution_loop(
                         return parsed if not full_response else {"parsed": parsed}
             
             # Add assistant message with tool calls to conversation
-            messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
+            messages.append(handler.build_assistant_message(accumulated_content, accumulated_tool_calls))
             
             # Execute tools
             tool_results = execute_tools(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
-            messages.extend(handler.create_tool_result_messages(tool_results))
+            messages.extend(handler.build_tool_result_messages(tool_results))
             
             # Update kwargs with new messages for next iteration
             kwargs["messages"] = messages
@@ -266,7 +269,7 @@ def sync_streaming_execution_loop(
         raise Exception("Max tool calls reached without a valid response")
 
 def async_streaming_execution_loop(
-    handler: AbstractProviderHandler,
+    handler: Handler,
     **kwargs: Any,
 ) -> AsyncGenerator[Any, None]:
     """Asynchronous streaming execution loop with tool calling support."""
@@ -286,8 +289,8 @@ def async_streaming_execution_loop(
         if not tools:
             chunk_count = 0
             response = await handler.call_api_async(**kwargs)
-            async for text, _, chunk in handler.handle_streaming_response_async(response):
-                yield chunk if full_response else text
+            async for text, _, raw_chunk in handler.accumulate_streaming_response_async(response):
+                yield raw_chunk if full_response else text
                 
                 # Yield control to event loop for concurrency
                 # By default disabled because we assume the underline provider handles this
@@ -316,14 +319,14 @@ def async_streaming_execution_loop(
             accumulated_tool_calls = []
             chunk_count = 0
             # Process the streaming response
-            async for text, partial_tool_calls, chunk in handler.handle_streaming_response_async(response):
+            async for text, partial_tool_calls, raw_chunk in handler.accumulate_streaming_response_async(response):
                 # Accumulate content for tool calls
                 if text:
                     accumulated_content += text
                 
                 # Yield based on full_response setting
                 if full_response:
-                    yield chunk
+                    yield raw_chunk
                 elif text:
                     yield text
                 
@@ -351,11 +354,11 @@ def async_streaming_execution_loop(
                             return
                 
                 # Add assistant message with tool calls to conversation
-                messages.append(handler.create_assistant_message(accumulated_content, accumulated_tool_calls))
+                messages.append(handler.build_assistant_message(accumulated_content, accumulated_tool_calls))
                 
                 # Execute tools (this properly yields via asyncio.gather/run_in_executor)
                 tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling)
-                messages.extend(handler.create_tool_result_messages(tool_results))
+                messages.extend(handler.build_tool_result_messages(tool_results))
                 
                 # Update kwargs with new messages for next iteration
                 kwargs["messages"] = messages

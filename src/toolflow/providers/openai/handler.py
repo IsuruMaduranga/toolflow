@@ -5,9 +5,9 @@ from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 
-from ...core.handlers import AbstractProviderHandler
+from ...core.adapters import TransportAdapter, MessageAdapter
 
-class OpenAIHandler(AbstractProviderHandler):
+class OpenAIHandler(TransportAdapter, MessageAdapter):
     def __init__(self, client: OpenAI | AsyncOpenAI, original_create):
         self.client = client
         self.original_create = original_create
@@ -18,7 +18,18 @@ class OpenAIHandler(AbstractProviderHandler):
     async def call_api_async(self, **kwargs) -> Any:
         return await self.original_create(**kwargs)
 
-    def handle_response(self, response: ChatCompletion) -> tuple[str | None, List[Dict], Any]:
+    def stream_response(self, response: Generator[ChatCompletionChunk, None, None]) -> Generator[ChatCompletionChunk, None, None]:
+        """Handle a streaming response and yield raw chunks."""
+        for chunk in response:
+            yield chunk
+
+    async def stream_response_async(self, response: AsyncGenerator[ChatCompletionChunk, None]) -> AsyncGenerator[ChatCompletionChunk, None]:
+        """Handle an async streaming response and yield raw chunks."""
+        async for chunk in response:
+            yield chunk
+
+    def parse_response(self, response: ChatCompletion) -> tuple[str | None, List[Dict], Any]:
+        """Parse a complete response into (text, tool_calls, raw_response)."""
         message = response.choices[0].message
         text = message.content
         tool_calls = []
@@ -26,9 +37,27 @@ class OpenAIHandler(AbstractProviderHandler):
             tool_calls = [self._format_tool_call(tc) for tc in message.tool_calls]
         return text, tool_calls, response
 
-    def handle_streaming_response(self, response: Generator[ChatCompletionChunk, None, None]) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
+    def parse_stream_chunk(self, chunk: ChatCompletionChunk) -> tuple[str | None, List[Dict] | None, Any]:
+        """Parse a streaming chunk into (text, tool_calls, raw_chunk)."""
+        # Note: For OpenAI, tool calls are accumulated across chunks, so individual chunks
+        # typically only contain text. This method parses individual chunks.
+        # Tool call accumulation is handled by the handle_streaming_response method.
+        delta = chunk.choices[0].delta
+        text = delta.content
+        tool_calls = None
+        
+        # Individual chunks rarely contain complete tool calls for OpenAI
+        # Tool call completion is handled by the streaming execution logic
+        if delta.tool_calls:
+            # This is a partial tool call, mark as None since it's incomplete
+            tool_calls = None
+            
+        return text, tool_calls, chunk
+
+    def accumulate_streaming_response(self, response: Generator[ChatCompletionChunk, None, None]) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
+        """Handle streaming response with proper tool call accumulation."""
         tool_calls = []
-        for chunk in response:
+        for chunk in self.stream_response(response):
             delta = chunk.choices[0].delta
             text = delta.content
             
@@ -62,9 +91,10 @@ class OpenAIHandler(AbstractProviderHandler):
                 formatted_tool_calls.append(tc)
             yield None, formatted_tool_calls, None
 
-    async def handle_streaming_response_async(self, response: AsyncGenerator[ChatCompletionChunk, None]) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
+    async def accumulate_streaming_response_async(self, response: AsyncGenerator[ChatCompletionChunk, None]) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
+        """Handle async streaming response with proper tool call accumulation."""
         tool_calls = []
-        async for chunk in response:
+        async for chunk in self.stream_response_async(response):
             delta = chunk.choices[0].delta
             text = delta.content
             
@@ -98,8 +128,8 @@ class OpenAIHandler(AbstractProviderHandler):
                 formatted_tool_calls.append(tc)
             yield None, formatted_tool_calls, None
 
-    def create_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
-        """Create an assistant message with tool calls for OpenAI format."""
+    def build_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
+        """Build an assistant message with tool calls for OpenAI format."""
         message = {
             "role": "assistant",
             "content": text,
@@ -119,8 +149,8 @@ class OpenAIHandler(AbstractProviderHandler):
             message["tool_calls"] = openai_tool_calls
         return message
 
-    def create_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
-        """Create individual tool result messages for OpenAI format."""
+    def build_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
+        """Build individual tool result messages for OpenAI format."""
         messages = []
         for result in tool_results:
             messages.append({

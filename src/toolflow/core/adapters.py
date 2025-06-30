@@ -1,0 +1,142 @@
+from abc import ABC, abstractmethod
+from typing import Any, AsyncGenerator, Generator, List, Dict, Callable
+
+
+class TransportAdapter(ABC):
+    """
+    Protocol for handling API calls and streaming transport.
+    
+    This adapter is responsible for:
+    - Making synchronous and asynchronous API calls
+    - Handling raw streaming responses
+    """
+
+    @abstractmethod
+    def call_api(self, **kwargs) -> Any:
+        """Call the provider's synchronous API and return raw response."""
+        pass
+
+    @abstractmethod
+    async def call_api_async(self, **kwargs) -> Any:
+        """Call the provider's asynchronous API and return raw response."""
+        pass
+
+    @abstractmethod
+    def stream_response(self, response: Any) -> Generator[Any, None, None]:
+        """Handle a streaming response and yield raw chunks."""
+        pass
+
+    @abstractmethod
+    async def stream_response_async(self, response: Any) -> AsyncGenerator[Any, None]:
+        """Handle an async streaming response and yield raw chunks."""
+        pass
+
+    def accumulate_streaming_response(self, response: Any) -> Generator[tuple[str | None, List[Dict] | None, Any], None, None]:
+        """
+        Handle streaming response with tool call accumulation.
+        
+        This is a higher-level method that handles the complexity of accumulating
+        tool calls across multiple chunks. Default implementation uses simple
+        chunk-by-chunk parsing, but providers can override for complex accumulation.
+        """
+        for chunk in self.stream_response(response):
+            text, tool_calls, raw_chunk = self.parse_stream_chunk(chunk)
+            yield text, tool_calls, raw_chunk
+
+    async def accumulate_streaming_response_async(self, response: Any) -> AsyncGenerator[tuple[str | None, List[Dict] | None, Any], None]:
+        """
+        Handle async streaming response with tool call accumulation.
+        
+        This is a higher-level method that handles the complexity of accumulating
+        tool calls across multiple chunks. Default implementation uses simple
+        chunk-by-chunk parsing, but providers can override for complex accumulation.
+        """
+        async for chunk in self.stream_response_async(response):
+            text, tool_calls, raw_chunk = self.parse_stream_chunk(chunk)
+            yield text, tool_calls, raw_chunk
+
+
+class MessageAdapter(ABC):
+    """
+    Protocol for handling message processing and parsing.
+    
+    This adapter is responsible for:
+    - Parsing responses into standardized format
+    - Parsing streaming chunks
+    - Building messages for conversation
+    - Handling tool schemas and structured output
+    """
+
+    @abstractmethod
+    def parse_response(self, response: Any) -> tuple[str | None, List[Dict], Any]:
+        """Parse a complete response into (text, tool_calls, raw_response)."""
+        pass
+
+    @abstractmethod
+    def parse_stream_chunk(self, chunk: Any) -> tuple[str | None, List[Dict] | None, Any]:
+        """Parse a streaming chunk into (text, tool_calls, raw_chunk)."""
+        pass
+
+    @abstractmethod
+    def build_assistant_message(self, text: str | None, tool_calls: List[Dict]) -> Dict:
+        """Build an assistant message with tool calls for the conversation."""
+        pass
+
+    @abstractmethod
+    def build_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
+        """Build tool result messages for the conversation."""
+        pass
+
+    # Optional methods with default implementations
+    def parse_structured_output(self, tool_call: Dict, response_format: Any) -> Any:
+        """Handle the structured output from the tool call."""
+        tool_arguments = tool_call["function"]["arguments"]
+        response_data = tool_arguments.get('response', tool_arguments)
+        return response_format.model_validate(response_data)
+
+    def get_response_format_tool(self, response_format: Any) -> Dict:
+        """Get the response format tool schema."""
+        from .utils import get_structured_output_tool
+        if not response_format:
+            return None
+        if isinstance(response_format, type) and hasattr(response_format, 'model_json_schema'):
+            return get_structured_output_tool(response_format)
+        raise ValueError(f"Response format {response_format} is not a Pydantic model")
+
+    def get_tool_schema(self, tool: Any) -> Dict:
+        """Get the tool schema for the tool."""
+        from .utils import get_tool_schema
+        return get_tool_schema(tool)
+
+    def prepare_tool_schemas(self, tools: List[Any]) -> tuple[List[Dict], Dict]:
+        """Prepare tool schemas and tool map."""
+        import inspect
+        from .constants import RESPONSE_FORMAT_TOOL_NAME
+        
+        tool_schemas = []
+        tool_map = {}
+
+        if tools:
+            for tool in tools:
+                # check is tool is a function else error
+                if inspect.isbuiltin(tool):
+                    raise ValueError(f"Tool {tool} is a builtin function. You cannot use it as a tool.")
+                if callable(tool):
+                    # Check for existing metadata (from decorator OR previous caching)
+                    if hasattr(tool, "_tool_metadata"):
+                        schema = tool._tool_metadata
+                    else:
+                        schema = self.get_tool_schema(tool)
+                        # Cache for future use, but only for non-built-in functions
+                        tool._tool_metadata = schema
+
+                    # check if the tool is the response format tool and it is not an internal tool
+                    if schema["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME and not hasattr(tool, "__internal_tool__"):
+                        raise ValueError(f"You cannot use the {RESPONSE_FORMAT_TOOL_NAME} as a tool. It is used internally to format the response.")
+                        
+                    tool_schemas.append(schema)
+                    tool_map[schema["function"]["name"]] = tool
+                    continue
+                else:
+                    raise ValueError(f"Tool {tool} is not a function")
+        return tool_schemas, tool_map 
