@@ -8,7 +8,7 @@ from anthropic.types import Message, RawMessageStreamEvent
 # Use Anthropic's NOT_GIVEN directly since it's available in minimum supported versions
 from anthropic._types import NOT_GIVEN, NotGiven
 
-from toolflow.core import CreateMixin
+from toolflow.core import ExecutorMixin
 from toolflow.core import filter_toolflow_params
 from .handler import AnthropicHandler
 
@@ -24,7 +24,7 @@ class AnthropicWrapper:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
 
-class MessagesWrapper(CreateMixin):
+class MessagesWrapper(ExecutorMixin):
     def __init__(self, client: Anthropic, full_response: bool = False):
         self._client = client
         self.full_response = full_response
@@ -253,7 +253,7 @@ class AsyncAnthropicWrapper:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
 
-class AsyncMessagesWrapper(CreateMixin):
+class AsyncMessagesWrapper(ExecutorMixin):
     def __init__(self, client: AsyncAnthropic, full_response: bool = False):
         self._client = client
         self.full_response = full_response

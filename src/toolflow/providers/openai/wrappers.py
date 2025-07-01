@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Dict, overload, Iterable, AsyncIterable, Optional, Union
+from typing import Any, List, Dict, overload, Iterable, AsyncIterable, Optional, Union, TypeVar
 from typing_extensions import Literal
 
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
+from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
 # Use OpenAI's NOT_GIVEN directly (available in our minimum supported version 1.56.0+)
 from openai._types import NOT_GIVEN, NotGiven
 
-from toolflow.core import CreateMixin
-from .handler import OpenAIHandler
+from toolflow.core import ExecutorMixin
+from .handler import OpenAICreateHandler
+
+# Type variable for response format in parse method
+ResponseFormatT = TypeVar('ResponseFormatT')
 
 # --- Synchronous Wrappers ---
 
@@ -35,12 +39,12 @@ class ChatWrapper:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client.chat, name)
 
-class CompletionsWrapper(CreateMixin):
+class CompletionsWrapper(ExecutorMixin):
     def __init__(self, client: OpenAI, full_response: bool = False):
         self._client = client
         self.full_response = full_response
         self.original_create = client.chat.completions.create
-        self.handler = OpenAIHandler(client, client.chat.completions.create)
+        self.handler = OpenAICreateHandler(client, client.chat.completions.create)
 
     @overload
     def create(
@@ -299,7 +303,7 @@ class CompletionsWrapper(CreateMixin):
 
     def create(self, **kwargs: Any) -> Any:
         return self._create_sync(**kwargs)
-    
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
 
@@ -324,12 +328,12 @@ class AsyncChatWrapper:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client.chat, name)
 
-class AsyncCompletionsWrapper(CreateMixin):
+class AsyncCompletionsWrapper(ExecutorMixin):
     def __init__(self, client: AsyncOpenAI, full_response: bool = False):
         self._client = client
         self.full_response = full_response
         self.original_create = client.chat.completions.create
-        self.handler = OpenAIHandler(client, client.chat.completions.create)
+        self.handler = OpenAICreateHandler(client, client.chat.completions.create)
 
     @overload
     async def create(

@@ -5,7 +5,7 @@ from .execution_loops import (
 )
 
 
-class CreateMixin:
+class ExecutorMixin:
     """Mixin that provides common create() method logic for both sync and async wrappers."""
     
     def _prepare_kwargs(self, **kwargs: Any) -> dict:

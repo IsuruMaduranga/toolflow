@@ -1,12 +1,16 @@
 # src/toolflow/providers/anthropic/handler.py
+from __future__ import annotations
 import json
 from typing import Any, List, Dict, Generator, AsyncGenerator, Union, Optional, Tuple
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import Message, RawMessageStreamEvent
 
-from toolflow.core import Handler
+from toolflow.core import TransportAdapter, MessageAdapter, ResponseFormatAdapter
 
-class AnthropicHandler(Handler):
+# import future types
+# Handler = Union[TransportAdapter, MessageAdapter, ResponseFormatAdapter]
+
+class AnthropicHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
     def __init__(self, client: Union[Anthropic, AsyncAnthropic], original_create):
         self.client = client
         self.original_create = original_create

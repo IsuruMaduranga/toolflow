@@ -1,12 +1,16 @@
 # src/toolflow/core/execution_loops.py
-from typing import Any, Generator, AsyncGenerator
+from __future__ import annotations
+from typing import Any, Generator, AsyncGenerator, Union
 import asyncio
-from .adapters import Handler
+import json
+from .adapters import TransportAdapter, MessageAdapter, ResponseFormatAdapter
 from .utils import filter_toolflow_params
 from .constants import RESPONSE_FORMAT_TOOL_NAME
 from .tool_execution import execute_tools, execute_tools_async, MaxToolCallsError
 
 # ===== GLOBAL ASYNC YIELD FREQUENCY CONFIGURATION =====
+
+Handler = Union[TransportAdapter, MessageAdapter, ResponseFormatAdapter]
 
 _ASYNC_YIELD_FREQUENCY = 0  # Default: disabled
 
@@ -30,16 +34,18 @@ def sync_execution_loop(
     (kwargs,
      max_tool_calls,
      parallel_tool_execution,
-     response_format,
      full_response,
      graceful_error_handling) = filter_toolflow_params(**kwargs)
     
     tools = kwargs.get("tools", [])
     messages = kwargs.get("messages", [])
+
+    response_format_tool_call_required = False
+    if isinstance(handler, ResponseFormatAdapter):
+        response_format = kwargs.pop("response_format", None)
+        tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
     
-    response_format_tool = handler.get_response_format_tool(response_format)
-    
-    if not tools and not response_format_tool:
+    if not tools:
         response = handler.call_api(**kwargs)
         text, _, raw_response = handler.parse_response(response)
         # Check if max tokens was reached
@@ -48,8 +54,6 @@ def sync_execution_loop(
         return raw_response if full_response else text
     
     # If we have a response format tool, add it to tools
-    if response_format_tool:
-        tools.append(response_format_tool)
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
@@ -64,35 +68,11 @@ def sync_execution_loop(
 
         if not tool_calls:
             # If no tool calls but response_format is specified, try to parse text as JSON
-            if response_format_tool and text is not None:
-                try:
-                    import json
-                    parsed_json = json.loads(text)
-                    parsed = response_format.model_validate(parsed_json)
-                    if full_response:
-                        # For full response, replace the content with parsed model
-                        try:
-                            # OpenAI format
-                            raw_response.choices[0].message.content = parsed
-                        except (AttributeError, TypeError):
-                            # Anthropic format
-                            if hasattr(raw_response, 'content') and raw_response.content:
-                                for block in raw_response.content:
-                                    if hasattr(block, 'text'):
-                                        block.text = parsed
-                                        break
-                        return raw_response
-                    else:
-                        return parsed
-                except json.JSONDecodeError as e:
-                    # If JSON parsing fails when response_format is specified, raise an error
-                    raise ValueError(f"Response parsing failed to get structured output: {e}") from e
-                except Exception:
-                    # Re-raise validation errors and other exceptions
-                    raise
+            if response_format_tool_call_required: 
+                raise ValueError("Response format is specified but model did not return a structured output.")
             return raw_response if full_response else text
         
-        if response_format_tool:
+        if response_format_tool_call_required:
             for tool_call in tool_calls:
                 if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                     # Extract the structured data from the tool call arguments
@@ -118,7 +98,6 @@ async def async_execution_loop(
     (kwargs,
      max_tool_calls,
      parallel_tool_execution,
-     response_format,
      full_response,
      graceful_error_handling) = filter_toolflow_params(**kwargs)
     
@@ -126,9 +105,12 @@ async def async_execution_loop(
     if "messages" not in kwargs:
         kwargs["messages"] = []
     
-    response_format_tool = handler.get_response_format_tool(response_format)
+    response_format_tool_call_required = False
+    if isinstance(handler, ResponseFormatAdapter):
+        response_format = kwargs.pop("response_format", None)
+        tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
     
-    if not tools and not response_format_tool:
+    if not tools:
         response = await handler.call_api_async(**kwargs)
         text, _, raw_response = handler.parse_response(response)
         # Check if max tokens was reached
@@ -137,8 +119,6 @@ async def async_execution_loop(
         return raw_response if full_response else text
     
     # If we have a response format tool, add it to tools
-    if response_format_tool:
-        tools.append(response_format_tool)
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
@@ -153,35 +133,11 @@ async def async_execution_loop(
 
         if not tool_calls:
             # If no tool calls but response_format is specified, try to parse text as JSON
-            if response_format_tool and text is not None:
-                try:
-                    import json
-                    parsed_json = json.loads(text)
-                    parsed = response_format.model_validate(parsed_json)
-                    if full_response:
-                        # For full response, replace the content with parsed model
-                        try:
-                            # OpenAI format
-                            raw_response.choices[0].message.content = parsed
-                        except (AttributeError, TypeError):
-                            # Anthropic format
-                            if hasattr(raw_response, 'content') and raw_response.content:
-                                for block in raw_response.content:
-                                    if hasattr(block, 'text'):
-                                        block.text = parsed
-                                        break
-                        return raw_response
-                    else:
-                        return parsed
-                except json.JSONDecodeError as e:
-                    # If JSON parsing fails when response_format is specified, raise an error
-                    raise ValueError(f"Response parsing failed to get structured output: {e}") from e
-                except Exception:
-                    # Re-raise validation errors and other exceptions
-                    raise
+            if response_format_tool_call_required: 
+                raise ValueError("Response format is specified but model did not return a structured output.")
             return raw_response if full_response else text
         
-        if response_format_tool:
+        if response_format_tool_call_required:
             for tool_call in tool_calls:
                 if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                     # Extract the structured data from the tool call arguments
@@ -206,7 +162,6 @@ def sync_streaming_execution_loop(
     (kwargs,
      max_tool_calls,
      parallel_tool_execution,
-     response_format,
      full_response,
      graceful_error_handling) = filter_toolflow_params(**kwargs)
     
@@ -224,9 +179,11 @@ def sync_streaming_execution_loop(
         return
     
     # Prepare tools for tool calling
-    response_format_tool = handler.get_response_format_tool(response_format)
-    if response_format_tool:
-        tools.append(response_format_tool)
+    response_format_tool_call_required = False
+    if isinstance(handler, ResponseFormatAdapter):
+        response_format = kwargs.pop("response_format", None)
+        tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
+    
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
@@ -258,7 +215,7 @@ def sync_streaming_execution_loop(
         
         # Check if we have tool calls to execute
         if accumulated_tool_calls:
-            if response_format_tool:
+            if response_format_tool_call_required:
                 # Handle structured output
                 for tool_call in accumulated_tool_calls:
                     if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
@@ -296,7 +253,6 @@ def async_streaming_execution_loop(
     (kwargs,
      max_tool_calls,
      parallel_tool_execution,
-     response_format,
      full_response,
      graceful_error_handling) = filter_toolflow_params(**kwargs)
 
@@ -304,6 +260,11 @@ def async_streaming_execution_loop(
         
         tools = kwargs.get("tools", [])
         messages = kwargs.get("messages", [])
+
+        response_format_tool_call_required = False
+        if isinstance(handler, ResponseFormatAdapter):
+            response_format = kwargs.pop("response_format", None)
+            tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
         
         # If no tools, just do simple streaming
         if not tools:
@@ -322,9 +283,6 @@ def async_streaming_execution_loop(
             return
         
         # Prepare tools for tool calling
-        response_format_tool = handler.get_response_format_tool(response_format)
-        if response_format_tool:
-            tools.append(response_format_tool)
         tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
         tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
         
@@ -364,7 +322,7 @@ def async_streaming_execution_loop(
             
             # Check if we have tool calls to execute
             if accumulated_tool_calls:
-                if response_format_tool:
+                if response_format_tool_call_required:
                     # Handle structured output
                     for tool_call in accumulated_tool_calls:
                         if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:

@@ -146,6 +146,15 @@ def create_openai_response(content: str = None, tool_calls: List = None, usage: 
     
     return response
 
+def create_openai_structured_response(json_data: dict, usage: dict = None):
+    """Create a mock OpenAI response with a structured output tool call."""
+    tool_call = create_openai_tool_call(
+        "call_structured_output", 
+        "final_response_tool_internal", 
+        {"response": json_data}
+    )
+    return create_openai_response(content=None, tool_calls=[tool_call], usage=usage)
+
 def create_openai_stream_chunk(content: str = None, tool_calls: List = None, finish_reason: str = None):
     """Create a mock OpenAI streaming chunk."""
     chunk = Mock()
@@ -194,6 +203,15 @@ def create_anthropic_response(content: str = None, tool_calls: List = None, usag
         response.usage.output_tokens = 50
     
     return response
+
+def create_anthropic_structured_response(json_data: dict, usage: dict = None):
+    """Create a mock Anthropic response with a structured output tool call."""
+    tool_call = create_anthropic_tool_call(
+        "toolu_structured_output", 
+        "final_response_tool_internal", 
+        {"response": json_data}
+    )
+    return create_anthropic_response(content=None, tool_calls=[tool_call], usage=usage)
 
 def create_anthropic_stream_chunk(chunk_type: str, **kwargs):
     """Create a mock Anthropic streaming chunk."""

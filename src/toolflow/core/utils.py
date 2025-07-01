@@ -17,12 +17,11 @@ def filter_toolflow_params(**kwargs: Any) -> Tuple[Dict[str, Any], int, bool, An
     # Default values for toolflow params
     max_tool_calls = filtered_kwargs.pop("max_tool_calls", DEFAULT_PARAMS["max_tool_calls"])
     parallel_tool_execution = filtered_kwargs.pop("parallel_tool_execution", DEFAULT_PARAMS["parallel_tool_execution"])
-    response_format = filtered_kwargs.pop("response_format", DEFAULT_PARAMS["response_format"])
     full_response = filtered_kwargs.pop("full_response", DEFAULT_PARAMS["full_response"])
     graceful_error_handling = filtered_kwargs.pop("graceful_error_handling", DEFAULT_PARAMS["graceful_error_handling"])
     
     # Return a tuple of the filtered kwargs and toolflow params
-    return filtered_kwargs, max_tool_calls, parallel_tool_execution, response_format, full_response, graceful_error_handling
+    return filtered_kwargs, max_tool_calls, parallel_tool_execution, full_response, graceful_error_handling
 
 def get_structured_output_tool(pydantic_model: Any) -> Callable[..., str]:
     """Get the tool definition for structured output."""

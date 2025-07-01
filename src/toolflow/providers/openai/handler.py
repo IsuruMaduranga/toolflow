@@ -1,13 +1,16 @@
 # src/toolflow/providers/openai/handlers.py
+from __future__ import annotations
 import json
 from typing import Any, List, Dict, Generator, AsyncGenerator, Union, Optional, Tuple
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
+from toolflow.core import TransportAdapter, MessageAdapter, ResponseFormatAdapter
 
-from toolflow.core import Handler
+# import future types
+# Handler = Union[TransportAdapter, MessageAdapter]
 
-class OpenAIHandler(Handler):
+class OpenAIBaseHandler(TransportAdapter, MessageAdapter):
     def __init__(self, client: Union[OpenAI, AsyncOpenAI], original_create):
         self.client = client
         self.original_create = original_create
@@ -174,3 +177,6 @@ class OpenAIHandler(Handler):
                 "arguments": json.loads(tool_call.function.arguments),
             },
         }
+
+class OpenAICreateHandler(OpenAIBaseHandler, ResponseFormatAdapter):
+    pass

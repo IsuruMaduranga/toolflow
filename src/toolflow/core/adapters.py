@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Generator, List, Dict, Callable, Tuple, Optional, Union, Protocol
 from typing_extensions import Literal
-
+import json
 
 class TransportAdapter(ABC):
     """
@@ -91,22 +91,6 @@ class MessageAdapter(ABC):
         """Build tool result messages for the conversation."""
         pass
 
-    # Optional methods with default implementations
-    def parse_structured_output(self, tool_call: Dict[str, Any], response_format: Any) -> Any:
-        """Handle the structured output from the tool call."""
-        tool_arguments = tool_call["function"]["arguments"]
-        response_data = tool_arguments.get('response', tool_arguments)
-        return response_format.model_validate(response_data)
-
-    def get_response_format_tool(self, response_format: Any) -> Optional[Callable[..., str]]:
-        """Get the response format tool schema."""
-        from .utils import get_structured_output_tool
-        if not response_format:
-            return None
-        if isinstance(response_format, type) and hasattr(response_format, 'model_json_schema'):
-            return get_structured_output_tool(response_format)
-        raise ValueError(f"Response format {response_format} is not a Pydantic model")
-
     def get_tool_schema(self, tool: Any) -> Dict[str, Any]:
         """Get the tool schema for the tool."""
         from .utils import get_tool_schema
@@ -146,8 +130,31 @@ class MessageAdapter(ABC):
                     raise ValueError(f"Tool {tool} is not a function")
         return tool_schemas, tool_map
 
-class Handler(TransportAdapter, MessageAdapter):
+class ResponseFormatAdapter(ABC):
     """
-    Handler for handling the transport and message processing.
+    Protocol for handling response format.
     """
-    pass
+    # Optional methods with default implementations
+    def parse_structured_output(self, tool_call: Dict[str, Any], response_format: Any) -> Any:
+        """Handle the structured output from the tool call."""
+        from pydantic import ValidationError
+        tool_arguments = tool_call["function"]["arguments"]
+        response_data = tool_arguments.get('response', tool_arguments)
+        try:
+            return response_format.model_validate(response_data)
+        except ValidationError:
+            # Re-raise ValidationError as-is for proper error handling
+            raise
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Response parsing failed to get structured output: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Response parsing failed to get structured output: {e}") from e
+
+    def prepare_response_format_tool(self, tools: List[Any], response_format: Any) -> Tuple[List[Any], bool]:
+        """Get the response format tool schema."""
+        from .utils import get_structured_output_tool
+        if not response_format:
+            return tools, False
+        if isinstance(response_format, type) and hasattr(response_format, 'model_json_schema'):
+            return tools + [get_structured_output_tool(response_format)], True
+        raise ValueError(f"Response format {response_format} is not a Pydantic model")

@@ -16,8 +16,10 @@ from toolflow import from_openai, from_anthropic, tool
 from tests.conftest import (
     create_openai_response,
     create_openai_tool_call,
+    create_openai_structured_response,
     create_anthropic_response,
     create_anthropic_tool_call,
+    create_anthropic_structured_response,
     simple_math_tool,
     weather_tool,
     multiply_tool,
@@ -63,15 +65,13 @@ class TestCompleteWorkflows:
         mock_response_1 = create_openai_response(tool_calls=tool_calls)
         
         # Second response: model provides structured output
-        structured_content = '''
-        {
+        structured_data = {
             "operation": "combined",
             "operands": [10, 5, 3, 4],
             "result": 27,
             "timestamp": "2024-01-01T12:00:00"
         }
-        '''
-        mock_response_2 = create_openai_response(content=structured_content)
+        mock_response_2 = create_openai_structured_response(structured_data)
         
         mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
@@ -112,8 +112,7 @@ class TestCompleteWorkflows:
         mock_response_1 = create_anthropic_response(tool_calls=tool_calls)
         
         # Second response: structured team analysis
-        team_analysis = '''
-        {
+        team_analysis_data = {
             "people": [
                 {"name": "Alice", "age": 25, "skills": ["Python", "React"]},
                 {"name": "Bob", "age": 30, "skills": ["Go", "Docker"]}
@@ -121,8 +120,7 @@ class TestCompleteWorkflows:
             "average_age": 27.5,
             "top_skills": ["Python", "React", "Go", "Docker"]
         }
-        '''
-        mock_response_2 = create_anthropic_response(content=team_analysis)
+        mock_response_2 = create_anthropic_structured_response(team_analysis_data)
         
         mock_anthropic_client.messages.create.side_effect = [mock_response_1, mock_response_2]
         

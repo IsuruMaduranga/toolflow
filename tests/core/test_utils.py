@@ -124,12 +124,11 @@ class TestFilterToolflowParams:
             "temperature": 0.7
         }
         
-        filtered_kwargs, max_tool_calls, parallel_tool_execution, response_format, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
+        filtered_kwargs, max_tool_calls, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
         
         # Check that toolflow params were extracted
         assert max_tool_calls == 5
         assert parallel_tool_execution is True
-        assert response_format is None  # Default
         assert full_response is False  # Default
         assert graceful_error_handling is True  # Default
         
@@ -154,29 +153,28 @@ class TestFilterToolflowParams:
             "temperature": 0.8
         }
         
-        filtered_kwargs, max_tool_calls, parallel_tool_execution, response_format, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
+        filtered_kwargs, max_tool_calls, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
         
         assert max_tool_calls == 10
         assert parallel_tool_execution is False
-        assert response_format == MockModel
         assert full_response is True
         assert graceful_error_handling is False
         
-        # Only non-toolflow params should remain
-        assert len(filtered_kwargs) == 2
+        # Only non-toolflow params should remain (response_format is now handled by handlers)
+        assert len(filtered_kwargs) == 3
         assert filtered_kwargs["model"] == "gpt-4o-mini"
         assert filtered_kwargs["temperature"] == 0.8
+        assert "response_format" in filtered_kwargs  # Now stays in kwargs for handlers
     
     def test_filter_default_values(self):
         """Test that default values are used when params not provided."""
         kwargs = {"model": "gpt-4o-mini"}
         
-        filtered_kwargs, max_tool_calls, parallel_tool_execution, response_format, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
+        filtered_kwargs, max_tool_calls, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
         
         # Should use defaults from DEFAULT_PARAMS
         assert max_tool_calls == 10  # From constants
         assert parallel_tool_execution is False  # From constants
-        assert response_format is None
         assert full_response is False
         assert graceful_error_handling is True
 

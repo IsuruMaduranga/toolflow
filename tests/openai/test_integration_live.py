@@ -297,15 +297,16 @@ class TestOpenAIStructuredOutput:
                 "content": "Get the weather for New York and format it as structured data"
             }],
             tools=[get_weather],
-            response_format=WeatherData
+            response_format=WeatherInfo
         )
         
         # Should return parsed Pydantic model
-        assert isinstance(result, WeatherData)
+        assert isinstance(result, WeatherInfo)
         assert result.city == "New York"
-        assert isinstance(result.temperature, float)
+        assert isinstance(result.temperature, int)
         assert isinstance(result.condition, str)
-        assert isinstance(result.humidity, int)
+        # Humidity is optional since the weather tool doesn't always provide it
+        assert result.humidity is None or isinstance(result.humidity, int)
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
     def test_structured_output_math(self, client):
@@ -358,18 +359,19 @@ class TestOpenAIStructuredOutput:
                 "content": "Get weather for London and structure the response"
             }],
             tools=[get_weather],
-            response_format=WeatherData
+            response_format=WeatherInfo
         )
         
         # With full_response=True, toolflow should add a parsed attribute to the response
         # But if not available, just verify we get a proper response object
         if hasattr(result, 'parsed'):
             parsed = result.parsed
-            assert isinstance(parsed, WeatherData)
+            assert isinstance(parsed, WeatherInfo)
             assert parsed.city == "London"
-            assert isinstance(parsed.temperature, float)
+            assert isinstance(parsed.temperature, int)
             assert isinstance(parsed.condition, str)
-            assert isinstance(parsed.humidity, int)
+            # Humidity is optional since the weather tool doesn't always provide it
+            assert parsed.humidity is None or isinstance(parsed.humidity, int)
         else:
             # Fallback: verify we get a proper response object
             assert hasattr(result, 'choices')
@@ -421,7 +423,7 @@ class TestOpenAIStructuredOutput:
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Hello"}],
-                response_format=WeatherData,
+                response_format=WeatherInfo,
                 stream=True
             )
 
