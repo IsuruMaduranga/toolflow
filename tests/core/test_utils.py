@@ -174,7 +174,7 @@ class TestFilterToolflowParams:
         filtered_kwargs, max_tool_calls, parallel_tool_execution, response_format, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
         
         # Should use defaults from DEFAULT_PARAMS
-        assert max_tool_calls == 5  # From constants
+        assert max_tool_calls == 10  # From constants
         assert parallel_tool_execution is False  # From constants
         assert response_format is None
         assert full_response is False

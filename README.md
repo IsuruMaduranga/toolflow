@@ -8,13 +8,16 @@
 **🔗 [GitHub](https://github.com/IsuruMaduranga/toolflow)** • **📘 [Documentation](https://github.com/IsuruMaduranga/toolflow/tree/main/examples)**
 
 
-
-Toolflow is a blazing-fast, lightweight drop-in wrapper for the OpenAI and Anthropic SDKs — adding automatic parallel tool calling, structured Pydantic outputs, and smart response modes with zero breaking changes. Stop battling bloated tool-calling frameworks. Toolflow supercharges the official SDKs you already use, without sacrificing compatibility or simplicity.
+Toolflow is a blazing-fast, lightweight drop-in thin wrapper for the OpenAI and Anthropic SDKs — adding automatic parallel tool calling, structured Pydantic outputs, and smart response modes with zero breaking changes. Stop battling bloated tool-calling frameworks. Toolflow supercharges the official SDKs you already use, without sacrificing compatibility or simplicity.
 
 ## Installation
 
 ```bash
 pip install toolflow
+# OpenAI only
+pip install toolflow[openai]
+# Anthropic only
+pip install toolflow[anthropic]
 ```
 
 ## Quick Start
