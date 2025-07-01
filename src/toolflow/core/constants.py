@@ -1,4 +1,4 @@
-RESPONSE_FORMAT_TOOL_NAME = "final_response_tool_internal"
+RESPONSE_FORMAT_TOOL_NAME = "provide_final_answer"
 
 DEFAULT_PARAMS = {
     "max_tool_calls": 10,

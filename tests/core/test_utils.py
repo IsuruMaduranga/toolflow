@@ -194,7 +194,8 @@ class TestGetStructuredOutputTool:
         assert callable(tool_func)
         
         # Check function properties
-        assert tool_func.__name__ == "final_response_tool_internal"  # From constants
+        from toolflow.core.constants import RESPONSE_FORMAT_TOOL_NAME
+        assert tool_func.__name__ == RESPONSE_FORMAT_TOOL_NAME  # From constants
         assert hasattr(tool_func, "__internal_tool__")
         assert tool_func.__internal_tool__ is True
         

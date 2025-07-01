@@ -148,9 +148,10 @@ def create_openai_response(content: str = None, tool_calls: List = None, usage: 
 
 def create_openai_structured_response(json_data: dict, usage: dict = None):
     """Create a mock OpenAI response with a structured output tool call."""
+    from toolflow.core.constants import RESPONSE_FORMAT_TOOL_NAME
     tool_call = create_openai_tool_call(
         "call_structured_output", 
-        "final_response_tool_internal", 
+        RESPONSE_FORMAT_TOOL_NAME, 
         {"response": json_data}
     )
     return create_openai_response(content=None, tool_calls=[tool_call], usage=usage)
@@ -206,9 +207,10 @@ def create_anthropic_response(content: str = None, tool_calls: List = None, usag
 
 def create_anthropic_structured_response(json_data: dict, usage: dict = None):
     """Create a mock Anthropic response with a structured output tool call."""
+    from toolflow.core.constants import RESPONSE_FORMAT_TOOL_NAME
     tool_call = create_anthropic_tool_call(
         "toolu_structured_output", 
-        "final_response_tool_internal", 
+        RESPONSE_FORMAT_TOOL_NAME, 
         {"response": json_data}
     )
     return create_anthropic_response(content=None, tool_calls=[tool_call], usage=usage)

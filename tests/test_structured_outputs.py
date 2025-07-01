@@ -107,9 +107,10 @@ class TestStructuredOutputsOpenAI:
         client = from_openai(mock_openai_client)
         
         # Create a tool call with invalid JSON arguments
+        from toolflow.core.constants import RESPONSE_FORMAT_TOOL_NAME
         tool_call = create_openai_tool_call(
             "call_invalid", 
-            "final_response_tool_internal", 
+            RESPONSE_FORMAT_TOOL_NAME, 
             {"response": {"name": "John", "age": None}}  # Invalid age type
         )
         mock_response = create_openai_response(content=None, tool_calls=[tool_call])

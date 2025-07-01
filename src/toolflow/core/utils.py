@@ -31,9 +31,14 @@ def get_structured_output_tool(pydantic_model: Any) -> Callable[..., str]:
     final_response_tool_internal.__name__ = RESPONSE_FORMAT_TOOL_NAME
     setattr(final_response_tool_internal, "__internal_tool__", True)
     final_response_tool_internal.__doc__ = f"""
-    You must call this tool to provide your final response.
-    Because user expects the final response in `{pydantic_model.__name__}` format.
-    This tool must be your last tool call.
+    Use this tool to provide your final structured response in the exact `{pydantic_model.__name__}` format.
+    IMPORTANT: This tool should be called when you have gathered all necessary information and are ready to provide a complete, structured answer.
+    Requirements:
+    - Fill out ALL required fields in the {pydantic_model.__name__} model
+    - Ensure data types match the schema exactly
+    - Provide complete, accurate information based on the conversation
+    - Call this tool only once as your final response
+    The response parameter must be a properly formatted {pydantic_model.__name__} object with all required fields populated.
     """
     return final_response_tool_internal
 
