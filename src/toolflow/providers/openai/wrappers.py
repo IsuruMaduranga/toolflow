@@ -99,7 +99,6 @@ class CompletionsWrapper(CreateMixin):
             parallel_tool_calls: Enable parallel function calling during tool use
             presence_penalty: Penalize tokens based on presence (-2.0 to 2.0)
             reasoning_effort: Effort level for reasoning models ('low', 'medium', 'high')
-            response_format: Format specification for model output
             seed: Random seed for deterministic sampling
             service_tier: Processing tier ('auto', 'default', 'flex', 'scale', 'priority')
             stop: Up to 4 sequences where API will stop generating
@@ -107,12 +106,17 @@ class CompletionsWrapper(CreateMixin):
             stream: Enable streaming response (false for this overload)
             temperature: Sampling temperature (0-2, higher = more random)
             tool_choice: Control which tools are called by the model
-            tools: List of tools the model may call (max 128 functions)
             top_logprobs: Number of most likely tokens to return (0-20)
             top_p: Nucleus sampling parameter (0-1)
             user: Stable identifier for end-users
             
             # Toolflow-specific parameters
+            tools: A list of python functions that the model may call. (max 128 functions)
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
+            response_format: A pydantic model that the model will output.
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
             max_tool_calls: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
@@ -181,19 +185,23 @@ class CompletionsWrapper(CreateMixin):
             parallel_tool_calls: Enable parallel function calling during tool use
             presence_penalty: Penalize tokens based on presence (-2.0 to 2.0)
             reasoning_effort: Effort level for reasoning models ('low', 'medium', 'high')
-            response_format: Format specification for model output
             seed: Random seed for deterministic sampling
             service_tier: Processing tier ('auto', 'default', 'flex', 'scale', 'priority')
             stop: Up to 4 sequences where API will stop generating
             store: Whether to store completion for model distillation/evals
             temperature: Sampling temperature (0-2, higher = more random)
             tool_choice: Control which tools are called by the model
-            tools: List of tools the model may call (max 128 functions)
             top_logprobs: Number of most likely tokens to return (0-20)
             top_p: Nucleus sampling parameter (0-1)
             user: Stable identifier for end-users
             
             # Toolflow-specific parameters
+            tools: A list of python functions that the model may call. (max 128 functions)
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
+            response_format: A pydantic model that the model will output.
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
             max_tool_calls: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
@@ -262,19 +270,23 @@ class CompletionsWrapper(CreateMixin):
             parallel_tool_calls: Enable parallel function calling during tool use
             presence_penalty: Penalize tokens based on presence (-2.0 to 2.0)
             reasoning_effort: Effort level for reasoning models ('low', 'medium', 'high')
-            response_format: Format specification for model output
             seed: Random seed for deterministic sampling
             service_tier: Processing tier ('auto', 'default', 'flex', 'scale', 'priority')
             stop: Up to 4 sequences where API will stop generating
             store: Whether to store completion for model distillation/evals
             temperature: Sampling temperature (0-2, higher = more random)
             tool_choice: Control which tools are called by the model
-            tools: List of tools the model may call (max 128 functions)
             top_logprobs: Number of most likely tokens to return (0-20)
             top_p: Nucleus sampling parameter (0-1)
             user: Stable identifier for end-users
             
             # Toolflow-specific parameters
+            tools: A list of python functions that the model may call. (max 128 functions)
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
+            response_format: A pydantic model that the model will output.
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
             max_tool_calls: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
@@ -376,7 +388,6 @@ class AsyncCompletionsWrapper(CreateMixin):
             parallel_tool_calls: Enable parallel function calling during tool use
             presence_penalty: Penalize tokens based on presence (-2.0 to 2.0)
             reasoning_effort: Effort level for reasoning models ('low', 'medium', 'high')
-            response_format: Format specification for model output
             seed: Random seed for deterministic sampling
             service_tier: Processing tier ('auto', 'default', 'flex', 'scale', 'priority')
             stop: Up to 4 sequences where API will stop generating
@@ -384,12 +395,17 @@ class AsyncCompletionsWrapper(CreateMixin):
             stream: Enable streaming response (false for this overload)
             temperature: Sampling temperature (0-2, higher = more random)
             tool_choice: Control which tools are called by the model
-            tools: List of tools the model may call (max 128 functions)
             top_logprobs: Number of most likely tokens to return (0-20)
             top_p: Nucleus sampling parameter (0-1)
             user: Stable identifier for end-users
             
             # Toolflow-specific parameters
+            tools: A list of python functions that the model may call. (max 128 functions)
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
+            response_format: A pydantic model that the model will output.
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
             max_tool_calls: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
@@ -458,19 +474,23 @@ class AsyncCompletionsWrapper(CreateMixin):
             parallel_tool_calls: Enable parallel function calling during tool use
             presence_penalty: Penalize tokens based on presence (-2.0 to 2.0)
             reasoning_effort: Effort level for reasoning models ('low', 'medium', 'high')
-            response_format: Format specification for model output
             seed: Random seed for deterministic sampling
             service_tier: Processing tier ('auto', 'default', 'flex', 'scale', 'priority')
             stop: Up to 4 sequences where API will stop generating
             store: Whether to store completion for model distillation/evals
             temperature: Sampling temperature (0-2, higher = more random)
             tool_choice: Control which tools are called by the model
-            tools: List of tools the model may call (max 128 functions)
             top_logprobs: Number of most likely tokens to return (0-20)
             top_p: Nucleus sampling parameter (0-1)
             user: Stable identifier for end-users
             
-            # Toolflow-specific parameters
+            # Toolflow-enhanced parameters
+            tools: A list of python functions that the model may call. (max 128 functions)
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
+            response_format: A pydantic model that the model will output.
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
             max_tool_calls: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
@@ -546,12 +566,17 @@ class AsyncCompletionsWrapper(CreateMixin):
             store: Whether to store completion for model distillation/evals
             temperature: Sampling temperature (0-2, higher = more random)
             tool_choice: Control which tools are called by the model
-            tools: List of tools the model may call (max 128 functions)
             top_logprobs: Number of most likely tokens to return (0-20)
             top_p: Nucleus sampling parameter (0-1)
             user: Stable identifier for end-users
             
-            # Toolflow-specific parameters
+            # Toolflow-enhanced parameters
+            tools: A list of python functions that the model may call.
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
+            response_format: A pydantic model that the model will output.
+                This is enhanced by toolflow. Just pass your regular python functions as tools.
+                Toolflow will handle the rest.
             max_tool_calls: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
