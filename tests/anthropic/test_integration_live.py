@@ -696,17 +696,25 @@ class TestAnthropicStructuredOutput:
             )
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_structured_output_streaming_error(self, client):
-        """Test that structured output with streaming raises an error."""
-        # Test streaming with response_format should raise error
-        with pytest.raises(ValueError, match="response_format is not supported for streaming"):
-            client.messages.create(
-                model="claude-3-sonnet-20240229",
-                messages=[{"role": "user", "content": "Hello"}],
-                response_format=WeatherData,
-                stream=True,
-                max_tokens=1000
-            )
+    def test_structured_output_streaming_works(self, client):
+        """Test that structured output with streaming works correctly."""
+        # Test streaming with response_format should work and yield chunks then final result
+        stream = client.messages.create(
+            model="claude-3-sonnet-20240229",
+            messages=[{"role": "user", "content": "Get weather for Seattle and stream the response"}],
+            tools=[get_weather],
+            response_format=WeatherInfo,
+            stream=True,
+            max_tokens=1000
+        )
+        
+        results = list(stream)
+        # Should have some chunks plus final structured result
+        assert len(results) > 0
+        # Last result should be the parsed structured output
+        final_result = results[-1]
+        assert isinstance(final_result, WeatherInfo)
+        assert final_result.city == "Seattle"
 
 
 class TestAnthropicComprehensiveWorkflow:

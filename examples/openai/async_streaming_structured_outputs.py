@@ -1,4 +1,4 @@
-import time
+import asyncio
 import toolflow
 import openai
 import os
@@ -19,19 +19,25 @@ class Fib(BaseModel):
 class FibonacciResponse(BaseModel):
     fibonacci_numbers: List[Fib]
 
-def main():
+async def main():
     # Default behavior: simplified API (returns parsed data directly)
-    client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
+    client = toolflow.from_openai(openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")))
 
     # Toolflow enhanced API - returns parsed data directly
-    parsed_data = client.chat.completions.create(
+    parsed_data = await client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
+        messages=[{"role": "user", "content": "First explain me what is the Fibonacci sequence and then give me the 10th, 11th and 12th Fibonacci numbers."}],
         tools=[fibonacci],
-        response_format=FibonacciResponse
+        response_format=FibonacciResponse,
+        stream=True
     )
     
-    print("Parsed data:", parsed_data)  # Direct FibonacciResponse object
+    async for chunk in parsed_data:
+        if isinstance(chunk, str):
+            print(chunk, end="", flush=True)
+        else:
+            print("\nFibonacci numbers:")
+            print(chunk)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

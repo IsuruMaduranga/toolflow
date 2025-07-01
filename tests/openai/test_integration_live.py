@@ -416,16 +416,24 @@ class TestOpenAIStructuredOutput:
             )
 
     @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
-    def test_structured_output_streaming_error(self, client):
-        """Test that structured output with streaming raises an error."""
-        # Test streaming with response_format should raise error
-        with pytest.raises(ValueError, match="response_format is not supported for streaming"):
-            client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Hello"}],
-                response_format=WeatherInfo,
-                stream=True
-            )
+    def test_structured_output_streaming_works(self, client):
+        """Test that structured output with streaming works correctly."""
+        # Test streaming with response_format should work and yield chunks then final result
+        stream = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Get weather for Seattle and stream the response"}],
+            tools=[get_weather],
+            response_format=WeatherInfo,
+            stream=True
+        )
+        
+        results = list(stream)
+        # Should have some chunks plus final structured result
+        assert len(results) > 0
+        # Last result should be the parsed structured output
+        final_result = results[-1]
+        assert isinstance(final_result, WeatherInfo)
+        assert final_result.city == "Seattle"
 
 
 class TestOpenAIAsyncFunctionality:

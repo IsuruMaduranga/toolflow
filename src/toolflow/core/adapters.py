@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Generator, List, Dict, Callable, Tuple, Optional, Union, Protocol
-from typing_extensions import Literal
+from typing import Any, AsyncGenerator, Generator, List, Dict, Tuple, Optional
+from .utils import get_structured_output_tool
 import json
 
 class TransportAdapter(ABC):
@@ -150,11 +150,10 @@ class ResponseFormatAdapter(ABC):
         except Exception as e:
             raise ValueError(f"Response parsing failed to get structured output: {e}") from e
 
-    def prepare_response_format_tool(self, tools: List[Any], response_format: Any) -> Tuple[List[Any], bool]:
+    def prepare_response_format_tool(self, tools: List[Any], response_format: Any, streaming: bool = False) -> Tuple[List[Any], bool]:
         """Get the response format tool schema."""
-        from .utils import get_structured_output_tool
         if not response_format:
             return tools, False
         if isinstance(response_format, type) and hasattr(response_format, 'model_json_schema'):
-            return tools + [get_structured_output_tool(response_format)], True
+            return tools + [get_structured_output_tool(response_format, streaming)], True
         raise ValueError(f"Response format {response_format} is not a Pydantic model")

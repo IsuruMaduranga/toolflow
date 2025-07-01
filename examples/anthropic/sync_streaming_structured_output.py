@@ -21,18 +21,24 @@ class FibonacciResponse(BaseModel):
 
 def main():
     # Default behavior: simplified API (returns parsed data directly)
-    client = toolflow.from_anthropic(anthropic.Anthropic())
+    client = toolflow.from_anthropic(anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY")))
 
     # Toolflow enhanced API - returns parsed data directly
-    parsed_data = client.messages.create(   
+    parsed_data = client.messages.create(
         model="claude-3-5-haiku-latest",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
+        max_tokens=1024,
+        messages=[{"role": "user", "content": "First explain me what is the Fibonacci sequence and then give me the 10th, 11th and 12th Fibonacci numbers."}],
         tools=[fibonacci],
-        response_format=FibonacciResponse
+        response_format=FibonacciResponse,
+        stream=True
     )
     
-    print("Parsed data:", parsed_data)  # Direct FibonacciResponse object
+    for chunk in parsed_data:
+        if isinstance(chunk, str):
+            print(chunk, end="", flush=True)
+        else:
+            print("\nFibonacci numbers:")
+            print(chunk)
 
 if __name__ == "__main__":
-    main()
+    main(),

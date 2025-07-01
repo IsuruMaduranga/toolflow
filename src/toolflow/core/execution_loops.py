@@ -182,7 +182,7 @@ def sync_streaming_execution_loop(
     response_format_tool_call_required = False
     if isinstance(handler, ResponseFormatAdapter):
         response_format = kwargs.pop("response_format", None)
-        tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
+        tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format, streaming=True)
     
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
@@ -220,8 +220,9 @@ def sync_streaming_execution_loop(
                 for tool_call in accumulated_tool_calls:
                     if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                         parsed = handler.parse_structured_output(tool_call, response_format)
-                        # For structured output, we don't continue streaming
-                        return parsed if not full_response else {"parsed": parsed}
+                        # For structured output, yield the final parsed result
+                        yield parsed if not full_response else tool_call
+                        return
             
             # Add assistant message with tool calls to conversation
             # Use None for content if no text was accumulated to preserve context for summarization
@@ -264,7 +265,7 @@ def async_streaming_execution_loop(
         response_format_tool_call_required = False
         if isinstance(handler, ResponseFormatAdapter):
             response_format = kwargs.pop("response_format", None)
-            tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
+            tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format, streaming=True)
         
         # If no tools, just do simple streaming
         if not tools:
@@ -327,8 +328,8 @@ def async_streaming_execution_loop(
                     for tool_call in accumulated_tool_calls:
                         if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                             parsed = handler.parse_structured_output(tool_call, response_format)
-                            # For structured output, we don't continue streaming
-                            yield parsed if not full_response else {"parsed": parsed}
+                            # For structured output, yield the final parsed result
+                            yield parsed if not full_response else tool_call
                             return
                 
                 # Add assistant message with tool calls to conversation

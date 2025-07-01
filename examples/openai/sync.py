@@ -55,14 +55,14 @@ def main():
     client = toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
     
     # Using async client with a sync tool
-    content = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
-        tools=[sync_calculator],
-        max_tool_calls=5,
-    )
+    # content = client.chat.completions.create(
+    #     model="gpt-4o-mini",
+    #     messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
+    #     tools=[sync_calculator],
+    #     max_tool_calls=5,
+    # )
 
-    print(content)  # Direct string output
+    client.chat.completions.create()
 
 
 if __name__ == "__main__":
