@@ -2,24 +2,76 @@
 from __future__ import annotations
 import json
 from typing import Any, List, Dict, Generator, AsyncGenerator, Union, Optional, Tuple
-from openai import OpenAI, AsyncOpenAI
-from openai.types.chat import ChatCompletion, ChatCompletionChunk
-from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
+try:
+    from openai import OpenAI, AsyncOpenAI
+    from openai.types.chat import ChatCompletion, ChatCompletionChunk
+except ImportError:
+    OpenAI = None
+    AsyncOpenAI = None
+    ChatCompletion = None
+    ChatCompletionChunk = None
 from toolflow.core import TransportAdapter, MessageAdapter, ResponseFormatAdapter
 
 # import future types
 # Handler = Union[TransportAdapter, MessageAdapter]
 
-class OpenAIBaseHandler(TransportAdapter, MessageAdapter):
+class OpenAIHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
     def __init__(self, client: Union[OpenAI, AsyncOpenAI], original_create):
         self.client = client
         self.original_create = original_create
 
     def call_api(self, **kwargs) -> Any:
-        return self.original_create(**kwargs)
+        try:
+            return self.original_create(**kwargs)
+        except Exception as e:
+            # Extract tools from kwargs to help with error detection
+            tools = kwargs.get('tools', [])
+            self._handle_api_error(e, tools)
 
     async def call_api_async(self, **kwargs) -> Any:
-        return await self.original_create(**kwargs)
+        try:
+            return await self.original_create(**kwargs)
+        except Exception as e:
+            # Extract tools from kwargs to help with error detection  
+            tools = kwargs.get('tools', [])
+            self._handle_api_error(e, tools)
+
+    def _handle_api_error(self, error: Exception, tools: List[Any]) -> None:
+        """Handle API errors and provide better messages for tool schema issues."""
+        error_message = str(error).lower()
+        
+        # OpenAI-specific error patterns
+        openai_schema_patterns = [
+            'invalid schema',
+            'function parameters',
+            'extra required key',
+            'is not valid under any of the given schemas',
+            'prefixitems',
+            'additional properties',
+            'not of type',
+            'schema missing items',
+            'invalid request',
+            'function_call is invalid',
+            'required is required to be supplied',
+            'additionalproperties'
+        ]
+        
+        # Check if this is an OpenAI schema error
+        is_openai_error = any(pattern in error_message for pattern in openai_schema_patterns)
+        
+        if is_openai_error and tools:
+            raise ValueError(
+                f"Tool schema compatibility error with OpenAI:\n\n"
+                f"Original error: {error}\n\n"
+                f"Common fixes:\n"
+                f"  • Replace NamedTuple with List[List[float]] for coordinates\n"
+                f"  • Use Dict[str, Any] instead of Dict[Enum, Any]\n"
+                f"  • Make complex fields Optional with default values\n"
+                f"  • Simplify nested structures\n"
+            ) from error
+        
+        # If not a schema error or no tools, re-raise original
+        raise error
 
     def stream_response(self, response: Generator[ChatCompletionChunk, None, None]) -> Generator[ChatCompletionChunk, None, None]:
         """Handle a streaming response and yield raw chunks."""
@@ -34,11 +86,21 @@ class OpenAIBaseHandler(TransportAdapter, MessageAdapter):
     def parse_response(self, response: ChatCompletion) -> Tuple[Optional[str], List[Dict], Any]:
         """Parse a complete response into (text, tool_calls, raw_response)."""
         message = response.choices[0].message
-        text = message.content
+        text_content = message.content
         tool_calls = []
+        
         if message.tool_calls:
-            tool_calls = [self._format_tool_call(tc) for tc in message.tool_calls]
-        return text, tool_calls, response
+            for tool_call in message.tool_calls:
+                tool_calls.append({
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": json.loads(tool_call.function.arguments) if isinstance(tool_call.function.arguments, str) else tool_call.function.arguments
+                    }
+                })
+        
+        return text_content, tool_calls, response
 
     def check_max_tokens_reached(self, response: ChatCompletion) -> None:
         """Check if max tokens was reached and raise exception if so."""
@@ -47,118 +109,159 @@ class OpenAIBaseHandler(TransportAdapter, MessageAdapter):
 
     def parse_stream_chunk(self, chunk: ChatCompletionChunk) -> Tuple[Optional[str], Optional[List[Dict]], Any]:
         """Parse a streaming chunk into (text, tool_calls, raw_chunk)."""
-        # Note: For OpenAI, tool calls are accumulated across chunks, so individual chunks
-        # typically only contain text. This method parses individual chunks.
-        # Tool call accumulation is handled by the handle_streaming_response method.
-        delta = chunk.choices[0].delta
-        text = delta.content
+        text = None
         tool_calls = None
         
-        # Individual chunks rarely contain complete tool calls for OpenAI
-        # Tool call completion is handled by the streaming execution logic
-        if delta.tool_calls:
-            # This is a partial tool call, mark as None since it's incomplete
-            tool_calls = None
+        choice = chunk.choices[0] if chunk.choices else None
+        if choice and choice.delta:
+            # Handle text content
+            if choice.delta.content:
+                text = choice.delta.content
             
+            # Handle tool calls (OpenAI streams them differently)
+            if choice.delta.tool_calls:
+                # Note: OpenAI tool calls in streaming need accumulation
+                # This is simplified - full implementation would accumulate
+                tool_calls = None  # Defer to accumulation logic
+        
         return text, tool_calls, chunk
 
     def accumulate_streaming_response(self, response: Generator[ChatCompletionChunk, None, None]) -> Generator[Tuple[Optional[str], Optional[List[Dict]], Any], None, None]:
-        """Handle streaming response with proper tool call accumulation."""
-        tool_calls = []
-        for chunk in self.stream_response(response):
-            delta = chunk.choices[0].delta
-            text = delta.content
-            
-            if delta.tool_calls:
-                for tool_call_chunk in delta.tool_calls:
-                    if len(tool_calls) <= tool_call_chunk.index:
-                        tool_calls.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
-                    
-                    tc = tool_calls[tool_call_chunk.index]
-                    if tool_call_chunk.id:
-                        tc["id"] += tool_call_chunk.id
-                    if tool_call_chunk.function:
-                        if tool_call_chunk.function.name:
-                            tc["function"]["name"] += tool_call_chunk.function.name
-                        if tool_call_chunk.function.arguments:
-                            tc["function"]["arguments"] += tool_call_chunk.function.arguments
-            
-            yield text, None, chunk
+        """Handle streaming response with tool call accumulation for OpenAI."""
+        accumulated_tool_calls = {}
         
-        # After stream completes, yield tool calls if any were accumulated
-        if tool_calls:
-            # Parse JSON arguments for each tool call
-            formatted_tool_calls = []
-            for tc in tool_calls:
-                if tc["function"]["arguments"]:
+        for chunk in self.stream_response(response):
+            text = None
+            tool_calls = None
+            
+            choice = chunk.choices[0] if chunk.choices else None
+            if choice and choice.delta:
+                # Handle text content
+                if choice.delta.content:
+                    text = choice.delta.content
+                
+                # Handle tool calls accumulation
+                if choice.delta.tool_calls:
+                    for tool_call_delta in choice.delta.tool_calls:
+                        index = tool_call_delta.index
+                        
+                        if index not in accumulated_tool_calls:
+                            accumulated_tool_calls[index] = {
+                                "id": "",
+                                "type": "function",
+                                "function": {
+                                    "name": "",
+                                    "arguments": ""
+                                }
+                            }
+                        
+                        # Accumulate tool call parts
+                        if tool_call_delta.id:
+                            accumulated_tool_calls[index]["id"] = tool_call_delta.id
+                        
+                        if tool_call_delta.function:
+                            if tool_call_delta.function.name:
+                                accumulated_tool_calls[index]["function"]["name"] = tool_call_delta.function.name
+                            if tool_call_delta.function.arguments:
+                                accumulated_tool_calls[index]["function"]["arguments"] += tool_call_delta.function.arguments
+            
+            # Check if we have complete tool calls
+            elif choice and choice.finish_reason == "tool_calls":
+                # Tool calls are complete, parse arguments
+                tool_calls = []
+                for tool_call in accumulated_tool_calls.values():
                     try:
-                        tc["function"]["arguments"] = json.loads(tc["function"]["arguments"])
+                        # Parse JSON arguments
+                        tool_call["function"]["arguments"] = json.loads(tool_call["function"]["arguments"])
+                        tool_calls.append(tool_call)
                     except json.JSONDecodeError:
-                        # If JSON parsing fails, keep as string
-                        pass
-                formatted_tool_calls.append(tc)
-            yield None, formatted_tool_calls, None
+                        # Handle malformed JSON gracefully
+                        tool_call["function"]["arguments"] = {"error": "Invalid JSON"}
+                        tool_calls.append(tool_call)
+            
+            yield text, tool_calls, chunk
 
     async def accumulate_streaming_response_async(self, response: AsyncGenerator[ChatCompletionChunk, None]) -> AsyncGenerator[Tuple[Optional[str], Optional[List[Dict]], Any], None]:
-        """Handle async streaming response with proper tool call accumulation."""
-        tool_calls = []
-        async for chunk in self.stream_response_async(response):
-            delta = chunk.choices[0].delta
-            text = delta.content
-            
-            if delta.tool_calls:
-                for tool_call_chunk in delta.tool_calls:
-                    if len(tool_calls) <= tool_call_chunk.index:
-                        tool_calls.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
-                    
-                    tc = tool_calls[tool_call_chunk.index]
-                    if tool_call_chunk.id:
-                        tc["id"] += tool_call_chunk.id
-                    if tool_call_chunk.function:
-                        if tool_call_chunk.function.name:
-                            tc["function"]["name"] += tool_call_chunk.function.name
-                        if tool_call_chunk.function.arguments:
-                            tc["function"]["arguments"] += tool_call_chunk.function.arguments
-            
-            yield text, None, chunk
+        """Handle async streaming response with tool call accumulation for OpenAI."""
+        accumulated_tool_calls = {}
         
-        # After stream completes, yield tool calls if any were accumulated
-        if tool_calls:
-            # Parse JSON arguments for each tool call
-            formatted_tool_calls = []
-            for tc in tool_calls:
-                if tc["function"]["arguments"]:
+        async for chunk in self.stream_response_async(response):
+            text = None
+            tool_calls = None
+            
+            choice = chunk.choices[0] if chunk.choices else None
+            if choice and choice.delta:
+                # Handle text content
+                if choice.delta.content:
+                    text = choice.delta.content
+                
+                # Handle tool calls accumulation
+                if choice.delta.tool_calls:
+                    for tool_call_delta in choice.delta.tool_calls:
+                        index = tool_call_delta.index
+                        
+                        if index not in accumulated_tool_calls:
+                            accumulated_tool_calls[index] = {
+                                "id": "",
+                                "type": "function",
+                                "function": {
+                                    "name": "",
+                                    "arguments": ""
+                                }
+                            }
+                        
+                        # Accumulate tool call parts
+                        if tool_call_delta.id:
+                            accumulated_tool_calls[index]["id"] = tool_call_delta.id
+                        
+                        if tool_call_delta.function:
+                            if tool_call_delta.function.name:
+                                accumulated_tool_calls[index]["function"]["name"] = tool_call_delta.function.name
+                            if tool_call_delta.function.arguments:
+                                accumulated_tool_calls[index]["function"]["arguments"] += tool_call_delta.function.arguments
+            
+            # Check if we have complete tool calls
+            elif choice and choice.finish_reason == "tool_calls":
+                # Tool calls are complete, parse arguments
+                tool_calls = []
+                for tool_call in accumulated_tool_calls.values():
                     try:
-                        tc["function"]["arguments"] = json.loads(tc["function"]["arguments"])
+                        # Parse JSON arguments
+                        tool_call["function"]["arguments"] = json.loads(tool_call["function"]["arguments"])
+                        tool_calls.append(tool_call)
                     except json.JSONDecodeError:
-                        # If JSON parsing fails, keep as string
-                        pass
-                formatted_tool_calls.append(tc)
-            yield None, formatted_tool_calls, None
+                        # Handle malformed JSON gracefully
+                        tool_call["function"]["arguments"] = {"error": "Invalid JSON"}
+                        tool_calls.append(tool_call)
+            
+            yield text, tool_calls, chunk
 
-    def build_assistant_message(self, text: Optional[str], tool_calls: List[Dict], original_response: Any = None) -> Dict:
+    def build_assistant_message(self, text: Optional[str], tool_calls: List[Dict], original_response: ChatCompletion = None) -> Dict:
         """Build an assistant message with tool calls for OpenAI format."""
         message = {
             "role": "assistant",
-            "content": text,
         }
+        
+        if text:
+            message["content"] = text
+        
         if tool_calls:
-            # Convert tool calls back to OpenAI format
             openai_tool_calls = []
-            for tc in tool_calls:
+            for tool_call in tool_calls:
                 openai_tool_calls.append({
-                    "id": tc["id"],
-                    "type": tc["type"],
+                    "id": tool_call["id"],
+                    "type": "function",
                     "function": {
-                        "name": tc["function"]["name"],
-                        "arguments": json.dumps(tc["function"]["arguments"])
+                        "name": tool_call["function"]["name"],
+                        "arguments": json.dumps(tool_call["function"]["arguments"]) if isinstance(tool_call["function"]["arguments"], dict) else tool_call["function"]["arguments"]
                     }
                 })
             message["tool_calls"] = openai_tool_calls
+        
         return message
 
     def build_tool_result_messages(self, tool_results: List[Dict]) -> List[Dict]:
-        """Build individual tool result messages for OpenAI format."""
+        """Build tool result messages for OpenAI format."""
         messages = []
         for result in tool_results:
             messages.append({
@@ -167,16 +270,17 @@ class OpenAIBaseHandler(TransportAdapter, MessageAdapter):
                 "content": str(result["output"])
             })
         return messages
+    
+    def prepare_tool_schemas(self, tools: List[Any]) -> Tuple[List[Dict], Dict]:
+        """Prepare tool schemas in OpenAI format."""
+        # Get OpenAI-format schemas from parent
+        tool_schemas, tool_map = super().prepare_tool_schemas(tools)
+        
+        # Store tool map for error handling
+        self._last_tool_map = tool_map
+        
+        # OpenAI uses the schema as-is
+        return tool_schemas, tool_map
 
-    def _format_tool_call(self, tool_call: ChatCompletionMessageToolCall) -> Dict:
-        return {
-            "id": tool_call.id,
-            "type": "function",
-            "function": {
-                "name": tool_call.function.name,
-                "arguments": json.loads(tool_call.function.arguments),
-            },
-        }
-
-class OpenAICreateHandler(OpenAIBaseHandler, ResponseFormatAdapter):
+class OpenAICreateHandler(OpenAIHandler, ResponseFormatAdapter):
     pass

@@ -1,0 +1,113 @@
+# definition from openai sdk
+def parse(
+        self,
+        *,
+        messages: Iterable[ChatCompletionMessageParam],
+        model: Union[str, ChatModel],
+        audio: Optional[ChatCompletionAudioParam] | NotGiven = NOT_GIVEN,
+        response_format: type[ResponseFormatT] | NotGiven = NOT_GIVEN,
+        frequency_penalty: Optional[float] | NotGiven = NOT_GIVEN,
+        function_call: completion_create_params.FunctionCall | NotGiven = NOT_GIVEN,
+        functions: Iterable[completion_create_params.Function] | NotGiven = NOT_GIVEN,
+        logit_bias: Optional[Dict[str, int]] | NotGiven = NOT_GIVEN,
+        logprobs: Optional[bool] | NotGiven = NOT_GIVEN,
+        max_completion_tokens: Optional[int] | NotGiven = NOT_GIVEN,
+        max_tokens: Optional[int] | NotGiven = NOT_GIVEN,
+        metadata: Optional[Metadata] | NotGiven = NOT_GIVEN,
+        modalities: Optional[List[Literal["text", "audio"]]] | NotGiven = NOT_GIVEN,
+        n: Optional[int] | NotGiven = NOT_GIVEN,
+        parallel_tool_calls: bool | NotGiven = NOT_GIVEN,
+        prediction: Optional[ChatCompletionPredictionContentParam] | NotGiven = NOT_GIVEN,
+        presence_penalty: Optional[float] | NotGiven = NOT_GIVEN,
+        reasoning_effort: Optional[ReasoningEffort] | NotGiven = NOT_GIVEN,
+        seed: Optional[int] | NotGiven = NOT_GIVEN,
+        service_tier: Optional[Literal["auto", "default", "flex", "scale", "priority"]] | NotGiven = NOT_GIVEN,
+        stop: Union[Optional[str], List[str], None] | NotGiven = NOT_GIVEN,
+        store: Optional[bool] | NotGiven = NOT_GIVEN,
+        stream_options: Optional[ChatCompletionStreamOptionsParam] | NotGiven = NOT_GIVEN,
+        temperature: Optional[float] | NotGiven = NOT_GIVEN,
+        tool_choice: ChatCompletionToolChoiceOptionParam | NotGiven = NOT_GIVEN,
+        tools: Iterable[ChatCompletionToolParam] | NotGiven = NOT_GIVEN,
+        top_logprobs: Optional[int] | NotGiven = NOT_GIVEN,
+        top_p: Optional[float] | NotGiven = NOT_GIVEN,
+        user: str | NotGiven = NOT_GIVEN,
+        web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+    ) -> ParsedChatCompletion[ResponseFormatT]:
+        """Wrapper over the `client.chat.completions.create()` method that provides richer integrations with Python specific types
+        & returns a `ParsedChatCompletion` object, which is a subclass of the standard `ChatCompletion` class.
+
+        You can pass a pydantic model to this method and it will automatically convert the model
+        into a JSON schema, send it to the API and parse the response content back into the given model.
+
+        This method will also automatically parse `function` tool calls if:
+        - You use the `openai.pydantic_function_tool()` helper method
+        - You mark your tool schema with `"strict": True`
+
+        Example usage:
+        ```py
+        from pydantic import BaseModel
+        from openai import OpenAI
+
+
+        class Step(BaseModel):
+            explanation: str
+            output: str
+
+
+        class MathResponse(BaseModel):
+            steps: List[Step]
+            final_answer: str
+
+
+        client = OpenAI()
+        completion = client.chat.completions.parse(
+            model="gpt-4o-2024-08-06",
+            messages=[
+                {"role": "system", "content": "You are a helpful math tutor."},
+                {"role": "user", "content": "solve 8x + 31 = 2"},
+            ],
+            response_format=MathResponse,
+        )
+
+        message = completion.choices[0].message
+        if message.parsed:
+            print(message.parsed.steps)
+            print("answer: ", message.parsed.final_answer)
+        ```
+        """
+
+Example usage:
+No actually they suppor tool calling
+
+I tested this
+
+class GetEventInfo(BaseModel):
+    event_id: str
+
+class CalendarEvent(BaseModel):
+    name: str
+    date: str
+    participants: list[str]
+
+completion = client.chat.completions.parse(
+    model="gpt-4o-2024-08-06",
+    messages=[
+        {"role": "system", "content": "Extract the event information."},
+        {"role": "user", "content": "Extract info for event id 10"},
+    ],
+    tools=[openai.pydantic_function_tool(GetEventInfo)],
+    response_format=CalendarEvent,
+)
+
+print(completion)
+
+output:
+
+ParsedChatCompletion[CalendarEvent](id='chatcmpl-BoTYqI1q6AYSDgri4tFsSCQLKHnPh', choices=[ParsedChoice[CalendarEvent](finish_reason='tool_calls', index=0, logprobs=None, message=ParsedChatCompletionMessage[CalendarEvent](content=None, refusal=None, role='assistant', annotations=[], audio=None, function_call=None, tool_calls=[ParsedFunctionToolCall(id='call_kObJrDGSwwpvG94tAwr83ejT', function=ParsedFunction(arguments='{"event_id":"10"}', name='GetEventInfo', parsed_arguments=GetEventInfo(event_id='10')), type='function')], parsed=None))], created=1751369732, model='gpt-4o-2024-08-06', object='chat.completion', service_tier='default', system_fingerprint='fp_a288987b44', usage=CompletionUsage(completion_tokens=16, prompt_tokens=121, total_tokens=137, completion_tokens_details=CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=0, reasoning_tokens=0, rejected_prediction_tokens=0), prompt_tokens_details=PromptTokensDetails(audio_tokens=0, cached_tokens=0)))
+

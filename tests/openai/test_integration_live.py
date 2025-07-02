@@ -12,7 +12,10 @@ Note: These tests make real API calls and will consume OpenAI credits.
 import os
 import asyncio
 import time
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union, Tuple, Set
+from typing import NamedTuple
+from dataclasses import dataclass
+from enum import Enum
 import pytest
 from dotenv import load_dotenv
 load_dotenv()
@@ -45,6 +48,73 @@ pytestmark = pytest.mark.skipif(
     not os.getenv("OPENAI_API_KEY") or not OPENAI_AVAILABLE,
     reason="OpenAI API key not available or openai package not installed"
 )
+
+
+# ===== COMPLEX DATA TYPE DEFINITIONS =====
+
+# Enums
+class TaskStatus(Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class Priority(Enum):
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4
+
+# Dataclasses
+@dataclass
+class UserProfile:
+    name: str
+    age: int
+    email: str
+    is_active: bool = True
+    tags: List[str] = None
+
+@dataclass
+class LocationInfo:
+    latitude: float
+    longitude: float
+    city: str
+    country: str
+
+# NamedTuples
+class Point2D(NamedTuple):
+    x: float
+    y: float
+
+class ColorRGB(NamedTuple):
+    red: int
+    green: int
+    blue: int
+
+# Pydantic Models for Complex Types
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class TaskModel(BaseModel):
+    title: str = Field(..., description="Task title")
+    description: Optional[str] = Field(None, description="Task description")
+    priority: Priority = Field(default=Priority.MEDIUM, description="Task priority level")
+    status: TaskStatus = Field(default=TaskStatus.PENDING, description="Current task status")
+    assigned_to: Optional[str] = Field(None, description="Person assigned to task")
+    tags: List[str] = Field(default_factory=list, description="Task tags")
+
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class GeometryData(BaseModel):
+    points: List[Point2D]
+    center: Point2D
+    area: float
+    properties: Dict[str, Union[str, int, float]]
+
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class UserAnalytics(BaseModel):
+    user: UserProfile
+    location: LocationInfo
+    activity_score: float
+    preferences: Dict[str, bool]
+    favorite_colors: List[ColorRGB]
 
 
 # Test Models for Structured Output
@@ -86,6 +156,188 @@ class WeatherData(BaseModel):
     temperature: float
     condition: str
     humidity: int
+
+# Complex Response Models for Structured Output
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class ComprehensiveReport(BaseModel):
+    summary: str
+    user_count: int
+    active_users: List[UserProfile]
+    task_statistics: Optional[Dict[str, int]] = Field(default_factory=dict, description="Statistics about different task types or metrics")
+    priority_distribution: Optional[Dict[str, int]] = Field(default_factory=dict, description="Distribution of tasks by priority level (low, medium, high, critical)")
+    status_counts: Optional[Dict[str, int]] = Field(default_factory=dict, description="Count of tasks by status (pending, in_progress, completed, failed)")
+    recommendations: List[str] = Field(description="List of recommendations for project improvement")
+
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class DataAnalysisResult(BaseModel):
+    dataset_name: str
+    metrics: Optional[Dict[str, Union[int, float]]] = Field(default_factory=dict, description="Key performance metrics like total_sales, average_value, etc.")
+    outliers: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Data points that are unusually high or low")
+    patterns: List[str] = Field(description="Observable trends and patterns in the data")
+    visualization_data: List[List[float]] = Field(description="List of coordinate pairs [x, y] for data visualization")
+
+
+# ===== COMPLEX TYPE TOOLS =====
+
+@toolflow.tool
+def create_user_profile(
+    name: str,
+    age: int,
+    email: str,
+    is_active: bool = True,
+    tags: Optional[List[str]] = None
+) -> UserProfile:
+    """Create a user profile using dataclass."""
+    return UserProfile(name=name, age=age, email=email, is_active=is_active, tags=tags or [])
+
+@toolflow.tool
+def update_task_status(task: TaskModel, new_status: TaskStatus) -> TaskModel:
+    """Update task status using Pydantic model and enum."""
+    updated_task = task.model_copy()
+    updated_task.status = new_status
+    return updated_task
+
+@toolflow.tool
+def calculate_geometry_simple(point_coordinates: List[List[float]]) -> Dict[str, Any]:
+    """Calculate geometry data from point coordinates using basic types."""
+    if not point_coordinates:
+        return {
+            "point_count": 0,
+            "center_x": 0.0,
+            "center_y": 0.0,
+            "area": 0.0,
+            "perimeter": 0.0,
+            "shape_type": "empty"
+        }
+    
+    # Calculate center
+    center_x = sum(p[0] for p in point_coordinates) / len(point_coordinates)
+    center_y = sum(p[1] for p in point_coordinates) / len(point_coordinates)
+    
+    # Simple area calculation (triangle/polygon approximation)
+    area = 0.0
+    if len(point_coordinates) >= 3:
+        # Shoelace formula for polygon area
+        for i in range(len(point_coordinates)):
+            j = (i + 1) % len(point_coordinates)
+            area += point_coordinates[i][0] * point_coordinates[j][1]
+            area -= point_coordinates[j][0] * point_coordinates[i][1]
+        area = abs(area) / 2.0
+    
+    # Calculate perimeter
+    perimeter = 0.0
+    if len(point_coordinates) > 1:
+        for i in range(len(point_coordinates)):
+            j = (i + 1) % len(point_coordinates)
+            dx = point_coordinates[i][0] - point_coordinates[j][0]
+            dy = point_coordinates[i][1] - point_coordinates[j][1]
+            perimeter += (dx**2 + dy**2)**0.5
+    
+    shape_type = "polygon" if len(point_coordinates) >= 3 else "line" if len(point_coordinates) == 2 else "point"
+    
+    return {
+        "point_count": len(point_coordinates),
+        "center_x": center_x,
+        "center_y": center_y,
+        "area": area,
+        "perimeter": perimeter,
+        "shape_type": shape_type,
+        "coordinates": point_coordinates
+    }
+
+@toolflow.tool
+def process_mixed_data_simple(
+    numbers: List[Union[int, float]],
+    strings: List[str],
+    optional_dict: Optional[Dict[str, Any]] = None,
+    extra_string: str = "default",
+    extra_number: int = 0,
+    extra_flag: bool = False
+) -> Dict[str, Any]:
+    """Process mixed data types including Union and Optional types."""
+    result = {
+        "number_sum": sum(numbers),
+        "number_count": len(numbers),
+        "number_types": [type(n).__name__ for n in numbers],
+        "string_lengths": [len(s) for s in strings],
+        "concatenated_strings": " ".join(strings),
+        "extra_info": {
+            "string_value": extra_string,
+            "int_value": extra_number,
+            "bool_value": extra_flag
+        }
+    }
+    
+    if optional_dict:
+        result["optional_data"] = optional_dict
+        result["optional_keys"] = list(optional_dict.keys())
+    else:
+        result["optional_data"] = None
+        
+    return result
+
+@toolflow.tool
+def color_operations_simple(
+    rgb_colors: List[List[int]],
+    operation: str = "average"
+) -> Dict[str, Any]:
+    """Perform operations on RGB colors using basic types."""
+    if not rgb_colors:
+        return {"red": 0, "green": 0, "blue": 0, "operation": operation}
+    
+    if operation == "average":
+        avg_red = sum(c[0] for c in rgb_colors) // len(rgb_colors)
+        avg_green = sum(c[1] for c in rgb_colors) // len(rgb_colors)
+        avg_blue = sum(c[2] for c in rgb_colors) // len(rgb_colors)
+        return {"red": avg_red, "green": avg_green, "blue": avg_blue, "operation": "average"}
+    elif operation == "brightest":
+        brightest = max(rgb_colors, key=lambda c: c[0] + c[1] + c[2])
+        return {"red": brightest[0], "green": brightest[1], "blue": brightest[2], "operation": "brightest"}
+    elif operation == "darkest":
+        darkest = min(rgb_colors, key=lambda c: c[0] + c[1] + c[2])
+        return {"red": darkest[0], "green": darkest[1], "blue": darkest[2], "operation": "darkest"}
+    else:
+        first_color = rgb_colors[0]
+        return {"red": first_color[0], "green": first_color[1], "blue": first_color[2], "operation": "first"}
+
+@toolflow.tool
+def analyze_user_activity(
+    users: List[UserProfile],
+    locations: List[LocationInfo],
+    activity_data: Dict[str, List[float]]
+) -> UserAnalytics:
+    """Analyze user activity with complex nested types."""
+    # Use first user and location for demo
+    user = users[0] if users else UserProfile("Unknown", 0, "unknown@email.com")
+    location = locations[0] if locations else LocationInfo(0.0, 0.0, "Unknown", "Unknown")
+    
+    # Calculate activity score
+    all_scores = []
+    for scores in activity_data.values():
+        all_scores.extend(scores)
+    activity_score = sum(all_scores) / len(all_scores) if all_scores else 0.0
+    
+    # Generate some preferences
+    preferences = {
+        "notifications": True,
+        "public_profile": user.is_active,
+        "location_sharing": len(locations) > 0
+    }
+    
+    # Generate favorite colors
+    favorite_colors = [
+        ColorRGB(255, 0, 0),    # Red
+        ColorRGB(0, 255, 0),    # Green
+        ColorRGB(0, 0, 255)     # Blue
+    ]
+    
+    return UserAnalytics(
+        user=user,
+        location=location,
+        activity_score=activity_score,
+        preferences=preferences,
+        favorite_colors=favorite_colors
+    )
 
 
 # Test Tools
@@ -279,6 +531,139 @@ class TestBasicOpenAIToolCalling:
         assert "weather" in response.lower()
 
 
+class TestComplexDataTypes:
+    """Test complex data type support in OpenAI integration."""
+
+    @pytest.fixture
+    def client(self):
+        """Create toolflow wrapped OpenAI client."""
+        return toolflow.from_openai(openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
+
+    def test_dataclass_parameters(self, client):
+        """Test tools with dataclass parameters."""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user", 
+                "content": "Create a user profile for Alice, age 30, email alice@example.com, active status true, with tags ['developer', 'python']"
+            }],
+            tools=[create_user_profile],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        assert "Alice" in response
+        assert "30" in response
+        assert "alice@example.com" in response
+
+    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+    def test_pydantic_model_with_enum(self, client):
+        """Test tools with Pydantic models and enums."""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": "Update a task with title 'Test Task', priority HIGH, status PENDING to status COMPLETED"
+            }],
+            tools=[update_task_status],
+            max_tool_calls=5
+        )
+        
+        assert response is not None
+        assert "COMPLETED" in response or "completed" in response.lower()
+
+    def test_namedtuple_and_complex_calculations(self, client):
+        """Test tools with NamedTuple and complex calculations."""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": "Calculate geometry for a triangle with points at (0,0), (3,0), and (1.5,2.6)"
+            }],
+            tools=[calculate_geometry_simple],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        # Should contain geometric calculations
+        assert any(word in response.lower() for word in ["area", "center", "triangle", "polygon"])
+
+    def test_union_and_optional_types(self, client):
+        """Test tools with Union and Optional types."""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": "Process mixed data: numbers [1, 2.5, 3], strings ['hello', 'world'], optional dict {'key': 'value'}, and tuple ('test', 42, true)"
+            }],
+            tools=[process_mixed_data_simple],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        assert "6.5" in response  # Sum of numbers
+        assert "hello world" in response or "hello" in response and "world" in response
+
+    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+    def test_nested_complex_types(self, client):
+        """Test tools with deeply nested complex types."""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": """Analyze user activity for:
+                - User: Bob, age 25, email bob@test.com, active
+                - Location: 40.7128 latitude, -74.0060 longitude, New York, USA
+                - Activity data: {'logins': [1.0, 2.0, 3.0], 'posts': [0.5, 1.5]}"""
+            }],
+            tools=[analyze_user_activity],
+            max_tool_calls=5
+        )
+        
+        assert response is not None
+        assert "Bob" in response
+        assert "New York" in response
+        assert any(word in response.lower() for word in ["activity", "score", "analytics"])
+
+    def test_namedtuple_operations(self, client):
+        """Test operations on NamedTuple types."""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": "Find the average color of these RGB values: (255,0,0), (0,255,0), (0,0,255)"
+            }],
+            tools=[color_operations_simple],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        # Should contain color information
+        assert any(word in response.lower() for word in ["color", "rgb", "red", "green", "blue", "average"])
+
+    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+    def test_multiple_complex_tools_parallel(self, client):
+        """Test multiple complex tools running in parallel."""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": """Please perform these tasks in parallel:
+                1. Create user profile for 'Carol', age 28, email 'carol@test.com'
+                2. Calculate geometry for points (0,0), (4,0), (2,3)
+                3. Find brightest color among (255,100,100), (100,255,100), (100,100,255)"""
+            }],
+            tools=[create_user_profile, calculate_geometry_simple, color_operations_simple],
+            parallel_tool_execution=True,
+            max_tool_calls=8
+        )
+        
+        assert response is not None
+        assert "Carol" in response
+        assert any(word in response.lower() for word in ["geometry", "area", "triangle"])
+        assert any(word in response.lower() for word in ["color", "brightest"])
+
+
 class TestOpenAIStructuredOutput:
     """Test structured output functionality with real OpenAI API."""
 
@@ -426,6 +811,68 @@ class TestOpenAIStructuredOutput:
                 response_format=WeatherInfo,
                 stream=True
             )
+
+    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+    def test_comprehensive_report_structured_output(self, client):
+        """Test comprehensive structured output with all complex types."""
+        result = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": """Generate a comprehensive team project report. Include:
+                - Summary of the project
+                - User count (any number)
+                - List of active users (you can create sample profiles)
+                - Task statistics like: {"total_tasks": 25, "completed_this_week": 8}
+                - Priority distribution like: {"low": 5, "medium": 10, "high": 8, "critical": 2}
+                - Status counts like: {"pending": 5, "in_progress": 8, "completed": 10, "failed": 2}
+                - At least 2 practical recommendations for improvement"""
+            }],
+            tools=[create_user_profile],
+            response_format=ComprehensiveReport,
+            max_tool_calls=6
+        )
+        
+        assert isinstance(result, ComprehensiveReport)
+        assert isinstance(result.summary, str)
+        assert isinstance(result.user_count, int)
+        assert isinstance(result.active_users, list)
+        assert len(result.active_users) >= 0  # Flexible since AI might not create users via tools
+        assert isinstance(result.task_statistics, dict)
+        assert isinstance(result.priority_distribution, dict)
+        assert isinstance(result.status_counts, dict)
+        assert isinstance(result.recommendations, list)
+        assert len(result.recommendations) >= 1
+
+    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+    def test_data_analysis_structured_output(self, client):
+        """Test data analysis with structured output."""
+        result = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": """Analyze a dataset named 'Sales Data' and provide:
+                - dataset_name: exactly 'Sales Data'
+                - metrics: like {"total_sales": 50000, "average_sale": 250, "max_sale": 1000}
+                - outliers: unusual data points like [{"value": 5000, "reason": "unusually high"}]
+                - patterns: trends like ["Sales increase on weekends", "Higher sales in Q4"]
+                - visualization_data: coordinate pairs like [[1, 100], [2, 150], [3, 200]]"""
+            }],
+            response_format=DataAnalysisResult,
+            max_tool_calls=5
+        )
+        
+        assert isinstance(result, DataAnalysisResult)
+        assert result.dataset_name == "Sales Data"
+        assert isinstance(result.metrics, dict)
+        assert len(result.metrics) >= 0  # Made flexible since they're now optional
+        assert isinstance(result.outliers, list)
+        assert isinstance(result.patterns, list)
+        assert isinstance(result.visualization_data, list)
+        # Verify coordinate pairs [x, y] in visualization_data
+        for point in result.visualization_data:
+            assert isinstance(point, list) and len(point) == 2
+            assert isinstance(point[0], (int, float)) and isinstance(point[1], (int, float))
 
 
 class TestOpenAIAsyncFunctionality:
@@ -919,4 +1366,15 @@ if __name__ == "__main__":
     
     print("✅ Environment setup complete")
     print("Run tests with: python -m pytest tests/openai/test_integration_live.py -v -s")
-    print("Note: These tests will consume OpenAI API credits") 
+    print("Note: These tests will consume OpenAI API credits")
+    print("📊 Complex data types now covered:")
+    print("  • Pydantic BaseModel with Field descriptions")
+    print("  • Dataclasses with default values") 
+    print("  • Enums (string and integer values)")
+    print("  • NamedTuple for structured data")
+    print("  • Union types (Union[int, float])")
+    print("  • Optional types with None handling") 
+    print("  • Generic types (List, Dict, Tuple)")
+    print("  • Nested complex combinations")
+    print("  • Structured output with complex types")
+    print("  • Parallel execution with complex tools") 

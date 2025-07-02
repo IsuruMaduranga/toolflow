@@ -2,6 +2,7 @@ import asyncio
 import toolflow
 from openai import AsyncOpenAI
 import os
+from typing import List
 from pydantic import BaseModel
 
 async def fibonacci(n: int) -> int:
@@ -15,7 +16,7 @@ class Fib(BaseModel):
     value_of_n_th_fibonacci: int
 
 class FibonacciResponse(BaseModel):
-    fibonacci_numbers: list[Fib]
+    fibonacci_numbers: List[Fib]
 
 async def main():
     # Default behavior: simplified API (returns parsed data directly)

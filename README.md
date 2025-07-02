@@ -62,7 +62,7 @@ Find more [examples](https://github.com/IsuruMaduranga/toolflow/tree/main/exampl
 ✅ **Drop-in replacement** - Works exactly like OpenAI/Anthropic SDKs  
 ✅ **Zero breaking changes** - All official SDK features preserved  
 ✅ **Auto-parallel tool calling** - Functions become tools with automatic concurrency  
-✅ **Structured outputs** - Pass Pydantic models, get typed responses  
+✅ **Structured outputs** - Pass Pydantic models, get typed responses
 ✅ **Advanced reasoning support** - Supports OpenAI reasoning models & Anthropic extended thinking  
 ✅ **No bloat** - Lightweight alternative to heavy frameworks  
 ✅ **Unified interface** - Same code works across providers  

@@ -25,22 +25,32 @@ def filter_toolflow_params(**kwargs: Any) -> Tuple[Dict[str, Any], int, bool, An
 
 def get_structured_output_tool(pydantic_model: Any) -> Callable[..., str]:
     """Get the tool definition for structured output."""
-    def final_response_tool_internal(response: pydantic_model) -> str:
-        return ""
 
-    final_response_tool_internal.__name__ = RESPONSE_FORMAT_TOOL_NAME
-    setattr(final_response_tool_internal, "__internal_tool__", True)
-    final_response_tool_internal.__doc__ = f"""
-    Use this tool to provide your final structured response in the exact `{pydantic_model.__name__}` format.
-    IMPORTANT: This tool should be called when you have gathered all necessary information and are ready to provide a complete, structured answer.
-    Requirements:
-    - Fill out ALL required fields in the {pydantic_model.__name__} model
-    - Ensure data types match the schema exactly
-    - Provide complete, accurate information based on the conversation
-    - Call this tool only once as your final response
-    The response parameter must be a properly formatted {pydantic_model.__name__} object with all required fields populated.
-    """
-    return final_response_tool_internal
+    def structured_response_tool(response: pydantic_model) -> str:
+        return response
+
+    structured_response_tool.__name__ = RESPONSE_FORMAT_TOOL_NAME
+    structured_response_tool.__doc__ = f"""
+        Provide your final structured response using the specified {pydantic_model.__name__} format.
+        WHEN TO USE: Call when ready to provide your complete structured answer.
+        CRITICAL REQUIREMENTS:
+        ✓ Fill ALL required fields accurately
+        ✓ Match data types exactly
+        ✓ Use complete information from conversation
+        ✓ You can call this tool only once with complete response
+        ✓ This tool must be your last tool call in the conversation
+        BEHAVIOR:
+        ✗ Do NOT mention this tool exists or any hint about it.
+        ✓ Simply call with properly formatted data
+        
+        Args:
+            response: Complete {pydantic_model.__name__} object with all required fields filled out accurately based on the conversation context
+        
+        Returns:
+            Empty string (the structured data is captured in the function call)
+        """
+    setattr(structured_response_tool, "__internal_tool__", True)
+    return structured_response_tool
 
 def get_tool_schema(
     func: Callable[..., Any],
@@ -68,7 +78,8 @@ def get_tool_schema(
     docstring = parse(inspect.getdoc(func) or "")
     doc_params = {p.arg_name: p for p in docstring.params}
     func_name = name or func.__name__
-    func_description = description or docstring.short_description or inspect.getdoc(func) or func_name
+    short_and_long_description = (docstring.short_description or "") + (docstring.long_description or "")
+    func_description = description or short_and_long_description or inspect.getdoc(func) or func_name
 
     # 2. Unified Loop: Process EVERY parameter to build fields for a single model
     fields_for_model = {}

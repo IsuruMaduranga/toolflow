@@ -1,6 +1,6 @@
 # src/toolflow/core/execution_loops.py
 from __future__ import annotations
-from typing import Any, Generator, AsyncGenerator, Union
+from typing import Any, Generator, AsyncGenerator, Union, List, Dict
 import asyncio
 import json
 from .adapters import TransportAdapter, MessageAdapter, ResponseFormatAdapter
@@ -220,8 +220,9 @@ def sync_streaming_execution_loop(
                 for tool_call in accumulated_tool_calls:
                     if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                         parsed = handler.parse_structured_output(tool_call, response_format)
-                        # For structured output, we don't continue streaming
-                        return parsed if not full_response else {"parsed": parsed}
+                        # For structured output, yield the final parsed result
+                        yield parsed if not full_response else tool_call
+                        return
             
             # Add assistant message with tool calls to conversation
             # Use None for content if no text was accumulated to preserve context for summarization
@@ -327,8 +328,8 @@ def async_streaming_execution_loop(
                     for tool_call in accumulated_tool_calls:
                         if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                             parsed = handler.parse_structured_output(tool_call, response_format)
-                            # For structured output, we don't continue streaming
-                            yield parsed if not full_response else {"parsed": parsed}
+                            # For structured output, yield the final parsed result
+                            yield parsed if not full_response else tool_call
                             return
                 
                 # Add assistant message with tool calls to conversation

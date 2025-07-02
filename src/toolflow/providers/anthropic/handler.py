@@ -16,10 +16,53 @@ class AnthropicHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         self.original_create = original_create
 
     def call_api(self, **kwargs) -> Any:
-        return self.original_create(**kwargs)
+        try:
+            return self.original_create(**kwargs)
+        except Exception as e:
+            # Extract tools from kwargs to help with error detection
+            tools = kwargs.get('tools', [])
+            self._handle_api_error(e, tools)
 
     async def call_api_async(self, **kwargs) -> Any:
-        return await self.original_create(**kwargs)
+        try:
+            return await self.original_create(**kwargs)
+        except Exception as e:
+            # Extract tools from kwargs to help with error detection  
+            tools = kwargs.get('tools', [])
+            self._handle_api_error(e, tools)
+
+    def _handle_api_error(self, error: Exception, tools: List[Any]) -> None:
+        """Handle API errors and provide better messages for tool schema issues."""
+        error_message = str(error).lower()
+        
+        # Anthropic-specific error patterns
+        anthropic_schema_patterns = [
+            'invalid request',
+            'tool schema',
+            'input_schema',
+            'invalid tool',
+            'validation error',
+            'json schema',
+            'required field',
+            'additional properties'
+        ]
+        
+        # Check if this is an Anthropic schema error
+        is_anthropic_error = any(pattern in error_message for pattern in anthropic_schema_patterns)
+        
+        if is_anthropic_error and tools:
+            raise ValueError(
+                f"Tool schema compatibility error with OpenAI:\n\n"
+                f"Original error: {error}\n\n"
+                f"Common fixes:\n"
+                f"  • Replace NamedTuple with List[List[float]] for coordinates\n"
+                f"  • Use Dict[str, Any] instead of Dict[Enum, Any]\n"
+                f"  • Make complex fields Optional with default values\n"
+                f"  • Simplify nested structures\n"
+            ) from error
+        
+        # If not a schema error or no tools, re-raise original
+        raise error
 
     def stream_response(self, response: Generator[RawMessageStreamEvent, None, None]) -> Generator[RawMessageStreamEvent, None, None]:
         """Handle a streaming response and yield raw events."""
@@ -402,6 +445,9 @@ class AnthropicHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         
         # Get OpenAI-format schemas from parent
         openai_tool_schemas, tool_map = super().prepare_tool_schemas(tools)
+        
+        # Store tool map for error handling
+        self._last_tool_map = tool_map
         
         # Convert OpenAI format to Anthropic format
         anthropic_tool_schemas = []

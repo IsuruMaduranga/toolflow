@@ -3,7 +3,11 @@ import asyncio
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Callable, Any, Coroutine, Optional
+from typing import List, Dict, Callable, Any, Coroutine, Optional, Union, get_origin, get_args
+import inspect
+from pydantic import BaseModel
+import dataclasses
+from enum import Enum
 
 # ===== CUSTOM EXCEPTIONS =====
 
@@ -240,9 +244,189 @@ async def execute_tools_async(
     return sync_results + async_results + unknown_tool_results
 
 
+def _prepare_tool_arguments(tool_func: Callable[..., Any], arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepare tool arguments by converting JSON-like data to appropriate Python types.
+    
+    Supports conversion for:
+    - Pydantic BaseModel: dict -> BaseModel instance
+    - Dataclasses: dict -> dataclass instance  
+    - Enums: str/int -> enum instance
+    - NamedTuples: dict -> NamedTuple instance
+    - Union types: try each type in the union
+    - Optional types: handle None and wrapped type
+    - Generic types: List[T], Dict[K,V] with element conversion
+    - Custom classes: dict -> class instance (if accepts **kwargs)
+    
+    Args:
+        tool_func: The tool function to inspect
+        arguments: Dictionary of arguments from the tool call
+        
+    Returns:
+        Prepared arguments with proper Python types instantiated
+    """
+    sig = inspect.signature(tool_func)
+    prepared_args = {}
+    
+    for param_name, param in sig.parameters.items():
+        if param_name in arguments:
+            param_annotation = param.annotation
+            arg_value = arguments[param_name]
+            
+            try:
+                converted_value = _convert_argument_type(param_annotation, arg_value)
+                prepared_args[param_name] = converted_value
+            except Exception:
+                # If conversion fails, pass the original value and let the function handle it
+                prepared_args[param_name] = arg_value
+        # Note: We don't add missing arguments - let the function handle defaults/required params
+    
+    return prepared_args
+
+def _convert_argument_type(target_type: Any, value: Any) -> Any:
+    """
+    Convert a value to the target type.
+    
+    Args:
+        target_type: The target type annotation
+        value: The value to convert
+        
+    Returns:
+        Converted value
+        
+    Raises:
+        Exception: If conversion fails
+    """
+    # If no type annotation or Any, return as-is
+    if target_type is inspect.Parameter.empty or target_type is Any:
+        return value
+    
+    # Handle Union types (including Optional which is Union[T, None]) first
+    origin = get_origin(target_type)
+    if origin is Union:
+        union_args = get_args(target_type)
+        
+        # Handle Optional[T] (which is Union[T, None])
+        if len(union_args) == 2 and type(None) in union_args:
+            if value is None:
+                return None
+            # Try to convert to the non-None type
+            non_none_type = next(arg for arg in union_args if arg is not type(None))
+            return _convert_argument_type(non_none_type, value)
+        
+        # Try each type in the union until one works
+        for union_type in union_args:
+            try:
+                return _convert_argument_type(union_type, value)
+            except Exception:
+                continue
+        # If none worked, raise exception
+        raise ValueError(f"Could not convert {value} to any type in Union {union_args}")
+    
+    # Handle generic types (List, Dict, etc.) before isinstance checks
+    if origin is not None:
+        return _convert_generic_type(target_type, value)
+    
+    # Now we can safely do isinstance checks for non-generic types
+    # If value is already the correct type, return as-is
+    try:
+        if isinstance(value, target_type):
+            return value
+    except TypeError:
+        # If isinstance fails (e.g., with some special types), continue with conversion
+        pass
+    
+    # Handle specific types
+    if inspect.isclass(target_type):
+        # Pydantic BaseModel
+        if issubclass(target_type, BaseModel) and isinstance(value, dict):
+            return target_type.model_validate(value)
+        
+        # Dataclass
+        if dataclasses.is_dataclass(target_type) and isinstance(value, dict):
+            return target_type(**value)
+        
+        # Enum
+        if issubclass(target_type, Enum):
+            if isinstance(value, str):
+                # Try by value first, then by name
+                try:
+                    return target_type(value)
+                except ValueError:
+                    return target_type[value]
+            elif isinstance(value, (int, float)):
+                return target_type(value)
+        
+        # NamedTuple
+        if hasattr(target_type, '_fields') and isinstance(value, dict):
+            # This is likely a NamedTuple
+            return target_type(**value)
+        
+        # Custom class - try to instantiate with dict as kwargs
+        if isinstance(value, dict):
+            try:
+                return target_type(**value)
+            except Exception:
+                pass
+    
+    # If we can't convert, return the original value
+    return value
+
+def _convert_generic_type(target_type: Any, value: Any) -> Any:
+    """Convert values for generic types like List[T], Dict[K,V], etc."""
+    origin = get_origin(target_type)
+    args = get_args(target_type)
+    
+    # List[T]
+    if origin is list and isinstance(value, list):
+        if args:  # If type args provided
+            element_type = args[0]
+            return [_convert_argument_type(element_type, item) for item in value]
+        return value
+    
+    # Dict[K, V]  
+    if origin is dict and isinstance(value, dict):
+        if len(args) >= 2:  # If key and value types provided
+            key_type, value_type = args[0], args[1]
+            return {
+                _convert_argument_type(key_type, k): _convert_argument_type(value_type, v)
+                for k, v in value.items()
+            }
+        return value
+    
+    # Tuple[T, ...] or Tuple[T1, T2, ...]
+    if origin is tuple and isinstance(value, (list, tuple)):
+        if args:
+            # Handle Tuple[T, ...] (variable length)
+            if len(args) == 2 and args[1] is Ellipsis:
+                element_type = args[0]
+                return tuple(_convert_argument_type(element_type, item) for item in value)
+            # Handle Tuple[T1, T2, ...] (fixed length)
+            else:
+                converted_items = []
+                for i, item in enumerate(value):
+                    if i < len(args):
+                        converted_items.append(_convert_argument_type(args[i], item))
+                    else:
+                        converted_items.append(item)
+                return tuple(converted_items)
+        return tuple(value)
+    
+    # Set[T]
+    if origin is set and isinstance(value, (list, set)):
+        if args:
+            element_type = args[0]
+            return {_convert_argument_type(element_type, item) for item in value}
+        return set(value)
+    
+    # If we can't handle this generic type, return as-is
+    return value
+
 def _run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], graceful_error_handling: bool = True) -> Dict[str, Any]:
     try:
-        result = tool_func(**tool_call["function"]["arguments"])
+        # Prepare arguments by converting dictionaries to Pydantic models when needed
+        prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
+        result = tool_func(**prepared_args)
         return {"tool_call_id": tool_call["id"], "output": result}
     except Exception as e:
         if graceful_error_handling:
@@ -256,7 +440,9 @@ def _run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], gra
 
 async def _run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Coroutine[Any, Any, Any]], graceful_error_handling: bool = True) -> Dict[str, Any]:
     try:
-        result = await tool_func(**tool_call["function"]["arguments"])
+        # Prepare arguments by converting dictionaries to Pydantic models when needed
+        prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
+        result = await tool_func(**prepared_args)
         return {"tool_call_id": tool_call["id"], "output": result}
     except Exception as e:
         if graceful_error_handling:

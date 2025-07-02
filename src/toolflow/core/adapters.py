@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Generator, List, Dict, Callable, Tuple, Optional, Union, Protocol
-from typing_extensions import Literal
+from typing import Any, AsyncGenerator, Generator, List, Dict, Tuple, Optional
+from .utils import get_structured_output_tool
 import json
 
 class TransportAdapter(ABC):
@@ -14,12 +14,16 @@ class TransportAdapter(ABC):
 
     @abstractmethod
     def call_api(self, **kwargs: Any) -> Any:
-        """Call the provider's synchronous API and return raw response."""
+        """Call the provider's synchronous API and return raw response.
+        Handle all API errors and raise a ValueError with a helpful message.
+        """
         pass
 
     @abstractmethod
     async def call_api_async(self, **kwargs: Any) -> Any:
-        """Call the provider's asynchronous API and return raw response."""
+        """Call the provider's asynchronous API and return raw response.
+        Handle all API errors and raise a ValueError with a helpful message.
+        """
         pass
 
     @abstractmethod
@@ -152,7 +156,6 @@ class ResponseFormatAdapter(ABC):
 
     def prepare_response_format_tool(self, tools: List[Any], response_format: Any) -> Tuple[List[Any], bool]:
         """Get the response format tool schema."""
-        from .utils import get_structured_output_tool
         if not response_format:
             return tools, False
         if isinstance(response_format, type) and hasattr(response_format, 'model_json_schema'):

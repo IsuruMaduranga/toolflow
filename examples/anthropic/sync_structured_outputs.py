@@ -2,6 +2,7 @@ import time
 import toolflow
 import anthropic
 import os
+from typing import List
 from pydantic import BaseModel
 
 @toolflow.tool
@@ -16,7 +17,7 @@ class Fib(BaseModel):
     value_of_n_th_fibonacci: int
 
 class FibonacciResponse(BaseModel):
-    fibonacci_numbers: list[Fib]
+    fibonacci_numbers: List[Fib]
 
 def main():
     # Default behavior: simplified API (returns parsed data directly)

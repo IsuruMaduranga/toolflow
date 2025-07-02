@@ -7,12 +7,24 @@ Set ANTHROPIC_API_KEY environment variable to run these tests.
 Run with: python -m pytest tests/anthropic/test_integration_live.py -v -s
 
 Note: These tests make real API calls and will consume Anthropic credits.
+
+Test Coverage:
+- Basic tool calling (sync, async, streaming)
+- Complex data types (dataclasses, enums, NamedTuple, Pydantic models)
+- Anthropic-compatible schema patterns (List[List[float]], Dict[str, int])
+- Structured output with complex response models
+- Error handling and validation for unsupported schemas
+- Parallel execution with mixed tool types
+- Performance benchmarking with complex operations
+- Comprehensive workflow testing combining multiple paradigms
 """
 
 import os
 import asyncio
 import time
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union, Tuple, Set, NamedTuple
+from dataclasses import dataclass
+from enum import Enum
 import pytest
 from dotenv import load_dotenv
 load_dotenv()
@@ -79,6 +91,112 @@ class WeatherData(BaseModel):
     temperature: float
     condition: str
     humidity: int
+
+
+# =============================================================================
+# Complex Data Types for Testing (Anthropic-Compatible Versions)
+# =============================================================================
+
+# Enum Types
+class TaskStatus(Enum):
+    """String enum for task statuses"""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class Priority(Enum):
+    """Integer enum for priority levels"""
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4
+
+# Dataclass Types
+@dataclass
+class UserProfile:
+    """User profile dataclass with various field types"""
+    name: str
+    age: int
+    email: str
+    is_active: bool = True
+    tags: List[str] = None
+    
+    def __post_init__(self):
+        if self.tags is None:
+            self.tags = []
+
+@dataclass
+class LocationInfo:
+    """Location information dataclass"""
+    latitude: float
+    longitude: float
+    city: str
+    country: str
+
+# NamedTuple Types (for coordinates and color data)
+class Point2D(NamedTuple):
+    """2D point coordinates"""
+    x: float
+    y: float
+
+class ColorRGB(NamedTuple):
+    """RGB color values"""
+    red: int
+    green: int
+    blue: int
+
+# Pydantic Models with Field descriptions and complex types
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class TaskModel(BaseModel):
+    """Task model with enum status and priority"""
+    id: int = Field(description="Unique task identifier")
+    title: str = Field(description="Task title")
+    description: Optional[str] = Field(description="Detailed task description", default=None)
+    status: TaskStatus = Field(description="Current task status")
+    priority: Priority = Field(description="Task priority level")
+    assignee: Optional[str] = Field(description="Task assignee name", default=None)
+    tags: List[str] = Field(description="List of task tags", default_factory=list)
+
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class GeometryData(BaseModel):
+    """Geometry data with coordinate handling"""
+    shape_type: str = Field(description="Type of geometric shape")
+    coordinates: List[List[float]] = Field(description="Shape coordinates as list of [x,y] pairs")
+    area: Optional[float] = Field(description="Calculated area", default=None)
+    perimeter: Optional[float] = Field(description="Calculated perimeter", default=None)
+
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class UserAnalytics(BaseModel):
+    """User analytics with various metrics"""
+    user_id: str = Field(description="User identifier")
+    total_tasks: int = Field(description="Total number of tasks")
+    completed_tasks: int = Field(description="Number of completed tasks")
+    success_rate: float = Field(description="Task completion rate as percentage")
+    avg_completion_time: Optional[float] = Field(description="Average task completion time in hours", default=None)
+    status_distribution: Dict[str, int] = Field(description="Distribution of tasks by status")
+    recent_activity: List[str] = Field(description="List of recent user activities", default_factory=list)
+
+# Complex Response Models for structured outputs
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class ComprehensiveReport(BaseModel):
+    """Comprehensive report combining multiple data types"""
+    report_id: str = Field(description="Unique report identifier")
+    generated_at: str = Field(description="Report generation timestamp")
+    user_summary: Dict[str, Any] = Field(description="User summary statistics")
+    task_analytics: Dict[str, int] = Field(description="Task analytics by status")
+    priority_breakdown: Dict[str, int] = Field(description="Tasks by priority level")
+    geometric_data: Optional[Dict[str, float]] = Field(description="Geometric calculations if applicable", default=None)
+    recommendations: List[str] = Field(description="System recommendations", default_factory=list)
+
+@pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+class DataAnalysisResult(BaseModel):
+    """Data analysis result with coordinates and statistics"""
+    analysis_type: str = Field(description="Type of analysis performed")
+    coordinate_count: int = Field(description="Number of coordinate points analyzed")
+    coordinates: List[List[float]] = Field(description="Analyzed coordinate pairs")
+    statistical_summary: Dict[str, float] = Field(description="Statistical summary of the data")
+    insights: List[str] = Field(description="Generated insights from analysis", default_factory=list)
 
 
 # Test Tools
@@ -172,6 +290,216 @@ async def search_books(genre: str, year_range: str = "recent") -> str:
         "fantasy": "The Priory of the Orange Tree by Samantha Shannon (2019) - Epic fantasy with dragons"
     }
     return books.get(genre.lower(), f"No recent recommendations found for {genre}")
+
+
+# =============================================================================
+# Complex Data Type Tools (Anthropic-Compatible)
+# =============================================================================
+
+@toolflow.tool
+def create_user_profile(
+    name: str,
+    age: int,
+    email: str,
+    is_active: bool = True,
+    tags: Optional[List[str]] = None
+) -> UserProfile:
+    """
+    Create a user profile with various data types.
+    Tests dataclass creation with optional parameters and default values.
+    """
+    return UserProfile(name=name, age=age, email=email, is_active=is_active, tags=tags)
+
+@toolflow.tool 
+def update_task_status(
+    task_id: int,
+    title: str,
+    status: str,
+    priority: int,
+    description: Optional[str] = None,
+    assignee: Optional[str] = None,
+    tags: Optional[List[str]] = None
+) -> str:
+    """
+    Update task status using enum values and Pydantic model.
+    Tests enum handling, optional fields, and complex model creation.
+    """
+    try:
+        task_status = TaskStatus(status)
+        task_priority = Priority(priority)
+        
+        if not PYDANTIC_AVAILABLE:
+            return f"Task {task_id} updated: {title} - Status: {task_status.value}, Priority: {task_priority.value}"
+            
+        task = TaskModel(
+            id=task_id,
+            title=title,
+            description=description,
+            status=task_status,
+            priority=task_priority,
+            assignee=assignee,
+            tags=tags or []
+        )
+        
+        return f"Task updated successfully: {task.title} (ID: {task.id}) - Status: {task.status.value}, Priority: {task.priority.value}"
+    except ValueError as e:
+        return f"Error updating task: {e}"
+
+@toolflow.tool
+def calculate_geometry_simple(coordinates: List[List[float]]) -> Dict[str, float]:
+    """
+    Calculate geometric properties using coordinate pairs.
+    Uses List[List[float]] instead of NamedTuple for Anthropic compatibility.
+    """
+    if len(coordinates) < 3:
+        return {"area": 0.0, "perimeter": 0.0, "error": "Need at least 3 points for polygon"}
+    
+    # Calculate area using shoelace formula
+    area = 0.0
+    perimeter = 0.0
+    n = len(coordinates)
+    
+    for i in range(n):
+        j = (i + 1) % n
+        x1, y1 = coordinates[i]
+        x2, y2 = coordinates[j]
+        
+        # Shoelace formula for area
+        area += x1 * y2 - x2 * y1
+        
+        # Calculate perimeter
+        perimeter += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+    
+    area = abs(area) / 2.0
+    
+    return {
+        "area": round(area, 2),
+        "perimeter": round(perimeter, 2),
+        "num_vertices": n
+    }
+
+@toolflow.tool
+def process_mixed_data_simple(
+    integers: List[int],
+    floats: List[float], 
+    text_data: List[str],
+    include_stats: bool = True
+) -> Dict[str, Any]:
+    """
+    Process mixed data types with Union and Optional types.
+    Uses simple parameters instead of Tuple for Anthropic compatibility.
+    """
+    result = {
+        "integer_sum": sum(integers),
+        "float_average": sum(floats) / len(floats) if floats else 0.0,
+        "text_count": len(text_data),
+        "combined_data": {
+            "integers": integers,
+            "floats": floats,
+            "texts": text_data
+        }
+    }
+    
+    if include_stats:
+        result["statistics"] = {
+            "total_items": len(integers) + len(floats) + len(text_data),
+            "max_integer": max(integers) if integers else None,
+            "min_float": min(floats) if floats else None,
+            "longest_text": max(text_data, key=len) if text_data else None
+        }
+    
+    return result
+
+@toolflow.tool
+def color_operations_simple(colors: List[List[int]]) -> Dict[str, Any]:
+    """
+    Perform operations on color data using RGB values.
+    Uses List[List[int]] instead of NamedTuple for Anthropic compatibility.
+    """
+    if not colors:
+        return {"error": "No colors provided"}
+    
+    # Calculate average color
+    avg_red = sum(color[0] for color in colors) / len(colors)
+    avg_green = sum(color[1] for color in colors) / len(colors)
+    avg_blue = sum(color[2] for color in colors) / len(colors)
+    
+    # Find brightest color (highest sum of RGB values)
+    brightest = max(colors, key=lambda c: sum(c))
+    brightest_value = sum(brightest)
+    
+    # Find darkest color (lowest sum of RGB values)  
+    darkest = min(colors, key=lambda c: sum(c))
+    darkest_value = sum(darkest)
+    
+    return {
+        "average_color": [round(avg_red), round(avg_green), round(avg_blue)],
+        "brightest_color": {
+            "rgb": brightest,
+            "brightness": brightest_value
+        },
+        "darkest_color": {
+            "rgb": darkest,
+            "brightness": darkest_value
+        },
+        "total_colors": len(colors),
+        "color_analysis": "RGB color operations completed successfully"
+    }
+
+@toolflow.tool
+def analyze_user_activity(
+    user_id: str,
+    task_counts: Dict[str, int],
+    completion_times: List[float],
+    recent_activities: List[str],
+    calculate_trends: bool = True
+) -> Dict[str, Any]:
+    """
+    Analyze user activity with complex nested data structures.
+    Uses string keys instead of Enum keys for Anthropic compatibility.
+    """
+    total_tasks = sum(task_counts.values())
+    completed = task_counts.get("completed", 0)
+    
+    analysis = {
+        "user_id": user_id,
+        "summary": {
+            "total_tasks": total_tasks,
+            "completed_tasks": completed,
+            "success_rate": (completed / total_tasks * 100) if total_tasks > 0 else 0.0,
+            "avg_completion_time": sum(completion_times) / len(completion_times) if completion_times else 0.0
+        },
+        "status_breakdown": task_counts,
+        "recent_activity_count": len(recent_activities),
+        "performance_metrics": {
+            "fastest_completion": min(completion_times) if completion_times else None,
+            "slowest_completion": max(completion_times) if completion_times else None,
+            "activity_frequency": len(recent_activities)
+        }
+    }
+    
+    if calculate_trends:
+        # Generate trend analysis
+        trend_score = completed / total_tasks if total_tasks > 0 else 0
+        if trend_score > 0.8:
+            trend = "excellent"
+        elif trend_score > 0.6:
+            trend = "good"
+        elif trend_score > 0.4:
+            trend = "average"
+        else:
+            trend = "needs_improvement"
+            
+        analysis["trends"] = {
+            "performance_trend": trend,
+            "trend_score": round(trend_score, 2),
+            "recommendations": [
+                f"User shows {trend} performance with {completed}/{total_tasks} completed tasks",
+                f"Average completion time: {analysis['summary']['avg_completion_time']:.1f}h" if completion_times else "No completion time data"
+            ]
+        }
+    
+    return analysis
 
 
 class TestBasicAnthropicToolCalling:
@@ -709,6 +1037,291 @@ class TestAnthropicStructuredOutput:
             )
 
 
+class TestAnthropicComplexDataTypes:
+    """Test complex data type support with Anthropic."""
+
+    @pytest.fixture
+    def client(self):
+        """Create toolflow wrapped Anthropic client."""
+        return toolflow.from_anthropic(anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY")))
+
+    def test_dataclass_creation(self, client):
+        """Test dataclass parameter handling."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Create a user profile for Alice, age 30, email alice@example.com, active status true, with tags ['developer', 'team-lead']"}],
+            tools=[create_user_profile],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        content = response.lower()
+        assert "alice" in content
+        assert "30" in response
+        assert "alice@example.com" in content
+
+    def test_enum_handling(self, client):
+        """Test enum parameter processing."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Update task 123 with title 'Fix bug' to status 'completed' and priority 3"}],
+            tools=[update_task_status],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        content = response.lower()
+        assert "123" in response
+        assert "fix bug" in content
+        assert "completed" in content
+
+    def test_coordinate_geometry(self, client):
+        """Test coordinate processing with List[List[float]]."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Calculate the area and perimeter of a triangle with vertices at [[0,0], [3,0], [0,4]]"}],
+            tools=[calculate_geometry_simple],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        # Triangle area should be 6.0 (0.5 * 3 * 4)
+        assert "6" in response or "6.0" in response
+
+    def test_mixed_data_processing(self, client):
+        """Test processing of mixed data types."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Process this mixed data: integers [1,2,3], floats [1.5, 2.5, 3.5], texts ['hello', 'world'], include statistics"}],
+            tools=[process_mixed_data_simple],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        content = response.lower()
+        assert "6" in response  # sum of integers 1+2+3
+        assert "statistics" in content or "stats" in content
+
+    def test_color_operations(self, client):
+        """Test color operations with RGB values."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Analyze these RGB colors: [[255,0,0], [0,255,0], [0,0,255]] - find average, brightest, and darkest"}],
+            tools=[color_operations_simple],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        content = response.lower()
+        assert "color" in content
+        assert any(word in content for word in ["brightest", "darkest", "average"])
+
+    def test_user_activity_analysis(self, client):
+        """Test complex nested data analysis."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{
+                "role": "user", 
+                "content": "Analyze user 'user123' activity with task counts: pending=5, completed=15, in_progress=3, completion times [2.5, 1.8, 3.2, 2.1], recent activities ['login', 'create_task', 'complete_task']"
+            }],
+            tools=[analyze_user_activity],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        content = response.lower()
+        assert "user123" in content
+        assert any(word in content for word in ["analysis", "performance", "activity"])
+        # Should calculate success rate: 15/23 ≈ 65%
+        assert any(str(num) in response for num in ["65", "23", "15"])
+
+    def test_parallel_complex_tools(self, client):
+        """Test parallel execution with complex data type tools."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": "Perform multiple operations: create user profile for Bob age 25, calculate geometry for [[0,0],[4,0],[0,3]], and analyze colors [[255,255,255],[0,0,0],[128,128,128]]"
+            }],
+            tools=[create_user_profile, calculate_geometry_simple, color_operations_simple],
+            parallel_tool_execution=True,
+            max_tool_calls=6
+        )
+        
+        assert response is not None
+        content = response.lower()
+        assert "bob" in content
+        assert "25" in response
+        # Triangle area should be 6.0 (0.5 * 4 * 3)
+        assert "6" in response or "area" in content
+        assert "color" in content
+
+    @pytest.mark.skipif(not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not available")
+    @pytest.mark.asyncio
+    async def test_async_complex_tools(self):
+        """Test async execution with complex data type tools."""
+        async_client = toolflow.from_anthropic(
+            anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        )
+        
+        response = await async_client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": "Create a user profile for Charlie, age 35, email charlie@test.com, and then update task 456 to completed status with high priority"
+            }],
+            tools=[create_user_profile, update_task_status],
+            parallel_tool_execution=True,
+            max_tool_calls=5
+        )
+        
+        assert response is not None
+        content = response.lower()
+        assert "charlie" in content
+        # Check that the user profile was created (age might not be explicitly mentioned in response)
+        assert any(word in content for word in ["profile", "created", "user"])
+        assert "456" in response
+        assert "completed" in content
+
+    @pytest.mark.skipif(not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not available")
+    @pytest.mark.asyncio
+    async def test_async_streaming_complex_tools(self):
+        """Test async streaming with complex data type tools."""
+        async_client = toolflow.from_anthropic(
+            anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        )
+        
+        stream = await async_client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": "Calculate geometry for a square with coordinates [[0,0],[2,0],[2,2],[0,2]] and analyze the data"
+            }],
+            tools=[calculate_geometry_simple, process_mixed_data_simple],
+            stream=True,
+            max_tool_calls=5
+        )
+        
+        content_chunks = []
+        async for chunk in stream:
+            if chunk:
+                content_chunks.append(chunk)
+        
+        full_content = "".join(content_chunks).lower()
+        assert len(full_content) > 50
+        # Square area should be 4.0 (2*2)
+        assert "4" in full_content or "area" in full_content
+
+    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+    def test_complex_structured_output(self, client):
+        """Test structured output with complex data types."""
+        result = client.messages.create(
+            model="claude-3-sonnet-20240229",
+            messages=[{
+                "role": "user",
+                "content": "Create a comprehensive analysis of coordinates [[1,1],[3,1],[3,3],[1,3]] including geometric calculations"
+            }],
+            tools=[calculate_geometry_simple],
+            response_format=DataAnalysisResult,
+            max_tokens=1000
+        )
+        
+        # Should return parsed Pydantic model
+        assert isinstance(result, DataAnalysisResult)
+        assert result.analysis_type is not None
+        assert result.coordinate_count == 4
+        assert len(result.coordinates) == 4
+        assert isinstance(result.statistical_summary, dict)
+        assert len(result.insights) > 0
+
+    @pytest.mark.skipif(not PYDANTIC_AVAILABLE, reason="Pydantic not available")
+    def test_comprehensive_report_output(self, client):
+        """Test comprehensive report generation with multiple data types."""
+        result = client.messages.create(
+            model="claude-3-sonnet-20240229",
+            messages=[{
+                "role": "user",
+                "content": "Generate a comprehensive report analyzing user performance with multiple data points and recommendations"
+            }],
+            tools=[analyze_user_activity, calculate_geometry_simple],
+            response_format=ComprehensiveReport,
+            max_tokens=1000
+        )
+        
+        # Should return parsed Pydantic model
+        assert isinstance(result, ComprehensiveReport)
+        assert result.report_id is not None
+        assert result.generated_at is not None
+        assert isinstance(result.user_summary, dict)
+        assert isinstance(result.task_analytics, dict)
+        assert isinstance(result.priority_breakdown, dict)
+        assert len(result.recommendations) > 0
+
+
+class TestAnthropicComplexDataTypesValidation:
+    """Test validation and error handling for complex data types."""
+
+    @pytest.fixture
+    def client(self):
+        """Create toolflow wrapped Anthropic client."""
+        return toolflow.from_anthropic(anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY")))
+
+    def test_enum_validation(self, client):
+        """Test enum validation and error handling."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Try to update task 999 with an invalid status 'invalid_status' and see what happens"}],
+            tools=[update_task_status],
+            graceful_error_handling=True,
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        content = response.lower()
+        # Should handle the error gracefully and mention the issue
+        assert any(word in content for word in ["error", "invalid", "status"])
+
+    def test_coordinate_validation(self, client):
+        """Test coordinate validation with insufficient data."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Try to calculate geometry with only 2 points: [[0,0], [1,1]]"}],
+            tools=[calculate_geometry_simple],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        content = response.lower()
+        # Should mention that more points are needed
+        assert any(word in content for word in ["need", "points", "polygon", "error"])
+
+    def test_empty_data_handling(self, client):
+        """Test handling of empty data structures."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Analyze empty color list: []"}],
+            tools=[color_operations_simple],
+            max_tool_calls=3
+        )
+        
+        assert response is not None
+        content = response.lower()
+        # Should handle empty data gracefully
+        assert any(word in content for word in ["error", "empty", "no colors"])
+
+
 class TestAnthropicComprehensiveWorkflow:
     """Test comprehensive workflows with Anthropic."""
 
@@ -740,6 +1353,31 @@ class TestAnthropicComprehensiveWorkflow:
         assert "hello world" in content  # Title case formatting
         assert "tokyo" in content  # Weather info
         assert any(word in content for word in ["time", "current"])  # Time info
+
+    def test_full_workflow_with_complex_types(self, client):
+        """Test workflow combining basic and complex data type tools."""
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            system="You are an advanced assistant that handles both simple calculations and complex data analysis.",
+            messages=[{
+                "role": "user",
+                "content": "Create a user profile for David age 28, calculate geometry for triangle [[0,0],[5,0],[0,12]], and analyze RGB colors [[255,0,0],[0,255,0]]"
+            }],
+            tools=[create_user_profile, calculate_geometry_simple, color_operations_simple, simple_calculator],
+            parallel_tool_execution=True,
+            max_tool_calls=8
+        )
+        
+        assert response is not None
+        content = response.lower()
+        
+        # Check results from complex tools
+        assert "david" in content
+        assert "28" in response
+        # Triangle area should be 30.0 (0.5 * 5 * 12)
+        assert "30" in response or "area" in content
+        assert "color" in content
 
     @pytest.mark.skipif(not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not available")
     @pytest.mark.asyncio
@@ -797,6 +1435,38 @@ class TestAnthropicComprehensiveWorkflow:
         # Check expected results: 18/3 = 6, then 6*2 = 12
         assert "6" in response or "12" in response  # Either step result
         assert "london" in content  # Weather info
+
+    @pytest.mark.skipif(not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not available")
+    @pytest.mark.asyncio
+    async def test_full_workflow_async_with_complex_data_types(self):
+        """Test full async workflow with complex data type tools."""
+        async_client = toolflow.from_anthropic(
+            anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        )
+        
+        response = await async_client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            system="You are an advanced async assistant that efficiently handles complex data analysis.",
+            messages=[{
+                "role": "user",
+                "content": "Analyze user 'async_user' with task counts pending=3, completed=7, calculate geometry for rectangle [[0,0],[6,0],[6,4],[0,4]], and process mixed data with integers [10,20,30]"
+            }],
+            tools=[analyze_user_activity, calculate_geometry_simple, process_mixed_data_simple],
+            parallel_tool_execution=True,
+            max_tool_calls=8
+        )
+        
+        assert response is not None
+        content = response.lower()
+        
+        # Check expected results
+        # Check that user analysis was performed (may not include "async_user" explicitly)
+        assert any(word in content for word in ["user", "analysis", "activity", "performance"])
+        # Rectangle area should be 24.0 (6*4)
+        assert "24" in response or "area" in content
+        # Integer sum should be 60 (10+20+30)
+        assert "60" in response
 
 
 class TestAnthropicPerformanceBenchmarks:
@@ -867,6 +1537,43 @@ class TestAnthropicPerformanceBenchmarks:
         found_numbers = sum(1 for num in fibonacci_sequence if str(num) in content)
         assert found_numbers >= 5  # Should find at least 5 of the expected numbers
 
+    @pytest.mark.skipif(True, reason="Complex data type performance test - run manually if needed")
+    def test_complex_data_type_parallel_performance(self, client):
+        """Test parallel execution performance with complex data type tools."""
+        start_time = time.time()
+        
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": "Perform multiple complex operations: create user profiles for Alice, Bob, Charlie; calculate geometry for multiple shapes; analyze different color sets; and process various data types"
+            }],
+            tools=[
+                create_user_profile, 
+                calculate_geometry_simple, 
+                color_operations_simple, 
+                process_mixed_data_simple,
+                analyze_user_activity
+            ],
+            parallel_tool_execution=True,
+            max_tool_calls=15,
+            max_workers=5
+        )
+        
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        assert response is not None
+        content = response.lower()
+        
+        # Check for evidence of multiple operations
+        assert any(name in content for name in ["alice", "bob", "charlie"])
+        assert any(word in content for word in ["geometry", "area", "color", "analysis"])
+        
+        print(f"Complex data type parallel execution time: {execution_time:.2f}s")
+        assert execution_time < 45  # Should complete reasonably fast with complex operations
+
     @pytest.mark.skipif(not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not available")
     @pytest.mark.skipif(True, reason="Performance test - run manually if needed")
     @pytest.mark.asyncio
@@ -917,4 +1624,12 @@ if __name__ == "__main__":
     
     print("✅ Environment setup complete")
     print("Run tests with: python -m pytest tests/anthropic/test_integration_live.py -v -s")
-    print("Note: These tests will consume Anthropic API credits") 
+    print("Note: These tests will consume Anthropic API credits")
+    print("\n📊 Test Coverage Includes:")
+    print("   • Basic tool calling functionality")
+    print("   • Complex data types (dataclasses, enums, Pydantic models)")
+    print("   • Async and streaming functionality")
+    print("   • Structured output support")
+    print("   • Error handling and validation")
+    print("   • Parallel execution performance")
+    print("   • Comprehensive workflow testing") 
