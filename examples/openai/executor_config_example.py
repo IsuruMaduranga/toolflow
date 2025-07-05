@@ -34,7 +34,7 @@ def example_1_sync_sequential():
         messages=[{"role": "user", "content": "Run some CPU tasks sequentially"}],
         tools=[cpu_bound_task],
         parallel_tool_execution=False,  # Default
-        max_tool_calls=3
+        max_tool_call_rounds=3
     )
     print("Sequential execution completed")
     print()
@@ -54,7 +54,7 @@ def example_2_sync_parallel():
         messages=[{"role": "user", "content": "Run some CPU tasks in parallel"}],
         tools=[cpu_bound_task],
         parallel_tool_execution=True,  # Enable parallel execution
-        max_tool_calls=3
+        max_tool_call_rounds=3
     )
     print("Parallel execution completed")
     print()
@@ -79,7 +79,7 @@ def example_3_custom_executor():
         messages=[{"role": "user", "content": "Use custom executor"}],
         tools=[cpu_bound_task],
         parallel_tool_execution=True,
-        max_tool_calls=3
+        max_tool_call_rounds=3
     )
     print("Custom executor execution completed")
     print()
@@ -96,7 +96,7 @@ async def example_4_async_default():
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Run mixed sync/async tasks"}],
         tools=[cpu_bound_task, async_task],
-        max_tool_calls=3
+        max_tool_call_rounds=3
     )
     print("Async execution completed (using asyncio default)")
     print()
@@ -119,7 +119,7 @@ async def example_5_async_with_global_executor():
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Use shared global executor"}],
         tools=[cpu_bound_task, async_task],
-        max_tool_calls=3
+        max_tool_call_rounds=3
     )
     print("Async execution completed (using shared global executor)")
     print()
@@ -140,7 +140,7 @@ def example_6_environment_variable():
         messages=[{"role": "user", "content": "Use environment configured threads"}],
         tools=[cpu_bound_task],
         parallel_tool_execution=True,
-        max_tool_calls=3
+        max_tool_call_rounds=3
     )
     print("Environment variable configuration completed")
     print()

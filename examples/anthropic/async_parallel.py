@@ -113,7 +113,7 @@ async def main():
         max_tokens=1024,
         messages=[{"role": "user", "content": "Calculate 10th, 11th, 12th and 13th Fibonacci numbers and fetch data from 'users' and 'products' APIs."}],
         tools=[calculate_fibonacci, fetch_api_data],
-        max_tool_calls=10,
+        max_tool_call_rounds=10,
         parallel_tool_execution=True
     )
     end_time = time.time()

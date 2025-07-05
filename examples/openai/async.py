@@ -76,7 +76,7 @@ async def main():
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
         tools=[sync_calculator],
-        max_tool_calls=5,
+        max_tool_call_rounds=5,
     )
     print(content)  # Direct string output
 
@@ -85,7 +85,7 @@ async def main():
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "How many users are there in the database?"}],
         tools=[async_database_query],
-        max_tool_calls=5,
+        max_tool_call_rounds=5,
     )
     print(content)  # Direct string output
 
@@ -94,7 +94,7 @@ async def main():
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Query the database to get the total number of users and orders, then multiply users by orders to get the result."}],
         tools=[sync_calculator, async_database_query],
-        max_tool_calls=10,
+        max_tool_call_rounds=10,
     )
     print(content)  # Direct string output
 

@@ -38,7 +38,7 @@ def main():
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What is 3.145 divided by 2?"}],
         tools=[sync_calculator],
-        max_tool_calls=5,
+        max_tool_call_rounds=5,
     )
 
     print("Result:", content)

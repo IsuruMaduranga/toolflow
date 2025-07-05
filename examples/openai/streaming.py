@@ -50,7 +50,7 @@ def test_streaming_with_tools():
         messages=[{"role": "user", "content": "Calculate 15 * 7, then add 25 to the result"}],
         tools=[simple_calculator],
         stream=True,
-        max_tool_calls=5,
+        max_tool_call_rounds=5,
     )
     
     print("Streaming response with tools:")

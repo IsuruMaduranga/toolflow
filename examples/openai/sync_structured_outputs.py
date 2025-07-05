@@ -4,6 +4,8 @@ import openai
 import os
 from typing import List
 from pydantic import BaseModel
+from dotenv import load_dotenv
+load_dotenv()
 
 @toolflow.tool
 def fibonacci(n: int) -> int:
@@ -28,7 +30,8 @@ def main():
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "What are 10th, 11th and 12th Fibonacci numbers."}],
         tools=[fibonacci],
-        response_format=FibonacciResponse
+        response_format=FibonacciResponse,
+        max_tool_call_rounds=6
     )
     
     print("Parsed data:", parsed_data)  # Direct FibonacciResponse object
