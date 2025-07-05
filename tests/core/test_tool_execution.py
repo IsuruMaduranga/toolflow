@@ -13,7 +13,7 @@ from toolflow.core.tool_execution import (
     set_max_workers,
     get_max_workers,
     set_executor,
-    execute_tools,
+    execute_tools_sync,
     execute_tools_async
 )
 
@@ -287,7 +287,7 @@ class TestPydanticModelParameters:
         
         tool_map = {"calculator": calculator}
         
-        results = execute_tools(tool_calls, tool_map)
+        results = execute_tools_sync(tool_calls, tool_map)
         
         assert len(results) == 1
         assert results[0]["tool_call_id"] == "call_1"
@@ -362,7 +362,7 @@ class TestPydanticModelParameters:
         
         tool_map = {"mixed_tool": mixed_tool}
         
-        results = execute_tools(tool_calls, tool_map)
+        results = execute_tools_sync(tool_calls, tool_map)
         
         assert len(results) == 1
         assert results[0]["tool_call_id"] == "call_mixed"
@@ -393,7 +393,7 @@ class TestPydanticModelParameters:
         tool_map = {"strict_tool": strict_tool}
         
         # With graceful error handling, should return error message
-        results = execute_tools(tool_calls, tool_map, graceful_error_handling=True)
+        results = execute_tools_sync(tool_calls, tool_map, graceful_error_handling=True)
         
         assert len(results) == 1
         assert results[0]["tool_call_id"] == "call_strict"
@@ -431,7 +431,7 @@ class TestComprehensiveTypeSupport:
             }
         }]
         
-        results = execute_tools(tool_calls, {"tool_with_dataclass": tool_with_dataclass})
+        results = execute_tools_sync(tool_calls, {"tool_with_dataclass": tool_with_dataclass})
         assert results[0]["output"] == "test: 42"
     
     def test_enum_support(self):
@@ -459,7 +459,7 @@ class TestComprehensiveTypeSupport:
             }
         }]
         
-        results = execute_tools(tool_calls, {"tool_with_enum": tool_with_enum})
+        results = execute_tools_sync(tool_calls, {"tool_with_enum": tool_with_enum})
         assert results[0]["output"] == "Status: active"
     
     def test_namedtuple_support(self):
@@ -487,7 +487,7 @@ class TestComprehensiveTypeSupport:
             }
         }]
         
-        results = execute_tools(tool_calls, {"tool_with_namedtuple": tool_with_namedtuple})
+        results = execute_tools_sync(tool_calls, {"tool_with_namedtuple": tool_with_namedtuple})
         assert results[0]["output"] == "Point: (1.5, 2.5)"
     
     def test_union_type_support(self):
@@ -511,12 +511,12 @@ class TestComprehensiveTypeSupport:
             }
         }]
         
-        results = execute_tools(tool_calls, {"tool_with_union": tool_with_union})
+        results = execute_tools_sync(tool_calls, {"tool_with_union": tool_with_union})
         assert "int: 42" in results[0]["output"]
         
         # Test with string
         tool_calls[0]["function"]["arguments"]["value"] = "hello"
-        results = execute_tools(tool_calls, {"tool_with_union": tool_with_union})
+        results = execute_tools_sync(tool_calls, {"tool_with_union": tool_with_union})
         assert "str: hello" in results[0]["output"]
     
     def test_optional_type_support(self):
@@ -540,12 +540,12 @@ class TestComprehensiveTypeSupport:
             }
         }]
         
-        results = execute_tools(tool_calls, {"tool_with_optional": tool_with_optional})
+        results = execute_tools_sync(tool_calls, {"tool_with_optional": tool_with_optional})
         assert results[0]["output"] == "Name: Alice"
         
         # Test with None
         tool_calls[0]["function"]["arguments"]["name"] = None
-        results = execute_tools(tool_calls, {"tool_with_optional": tool_with_optional})
+        results = execute_tools_sync(tool_calls, {"tool_with_optional": tool_with_optional})
         assert results[0]["output"] == "Name: unknown"
     
     def test_generic_type_support(self):
@@ -576,7 +576,7 @@ class TestComprehensiveTypeSupport:
             }
         }]
         
-        results = execute_tools(list_calls, {"tool_with_list": tool_with_list})
+        results = execute_tools_sync(list_calls, {"tool_with_list": tool_with_list})
         assert results[0]["output"] == "Items: a, b, c"
         
         # Test Dict execution
@@ -588,7 +588,7 @@ class TestComprehensiveTypeSupport:
             }
         }]
         
-        results = execute_tools(dict_calls, {"tool_with_dict": tool_with_dict})
+        results = execute_tools_sync(dict_calls, {"tool_with_dict": tool_with_dict})
         assert results[0]["output"] == "Sum: 6"
 
     def test_complex_nested_types(self):
@@ -627,5 +627,5 @@ class TestComprehensiveTypeSupport:
             }
         }]
         
-        results = execute_tools(tool_calls, {"tool_with_nested_list": tool_with_nested_list})
+        results = execute_tools_sync(tool_calls, {"tool_with_nested_list": tool_with_nested_list})
         assert results[0]["output"] == "People: Alice"

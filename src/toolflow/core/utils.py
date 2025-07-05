@@ -155,9 +155,7 @@ def process_response_format(
     text: Optional[str],
     tool_calls: List[Dict[str, Any]],
     tool_map: Dict[str, Any],
-    messages: List[Dict[str, Any]],
-    remaining_retry_count: int,
-    max_response_format_retries: int
+    messages: List[Dict[str, Any]]
 ) -> Optional[Tuple[Any, bool]]:
     """
     Process response format handling for structured outputs.
@@ -167,17 +165,8 @@ def process_response_format(
         Tuple of (structured_response, should_continue) if processing occurred
     """
     
-    def _create_error_message() -> str:
-        return f"""
-        Failed to parse structured output after {max_response_format_retries} retries.
-        TIP: If this is a data format issue, consider clearly documenting the response format parameters.
-        """
-    
     def _handle_no_tool_calls() -> Tuple[Any, bool]:
         """Handle case when no tool calls are present."""
-        if remaining_retry_count <= 0:
-            raise ResponseFormatError(_create_error_message())
-        
         # Add retry message and continue
         messages.append(handler.build_response_format_retry_message())
         return None, True
@@ -187,13 +176,10 @@ def process_response_format(
         tool_result = run_sync_tool(tool_call, tool_map[tool_call["function"]["name"]], True)
         
         if tool_result.get("is_error", False):
-            if remaining_retry_count <= 0:
-                raise ResponseFormatError(_create_error_message() + f"\nError: {tool_result['output']}")
-            
             # Add error context and retry
             messages.append(handler.build_assistant_message(text, [tool_call], raw_response))
             messages.extend(handler.build_tool_result_messages([tool_result]))
-            return None, True
+            return tool_result['output'], True
         
         # Success - return the structured response
         return tool_result["output"], False

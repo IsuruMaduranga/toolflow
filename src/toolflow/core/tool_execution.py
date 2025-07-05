@@ -35,6 +35,7 @@ def get_max_workers() -> int:
 def set_executor(executor: ThreadPoolExecutor) -> None:
     """Set a custom global executor (used by both sync and async)."""
     global _global_executor
+    global _custom_executor
     with _executor_lock:
         if _global_executor:
             _global_executor.shutdown(wait=True) 

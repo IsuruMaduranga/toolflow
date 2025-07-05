@@ -5,8 +5,8 @@ from pydantic import ValidationError
 from .adapters import TransportAdapter, MessageAdapter, ResponseFormatAdapter
 from .utils import filter_toolflow_params, process_response_format
 from .constants import RESPONSE_FORMAT_TOOL_NAME
-from .tool_execution import execute_tools, execute_tools_async
-from .exceptions import MaxToolCallsError, MaxTokensError
+from .tool_execution import execute_tools_sync, execute_tools_async
+from .exceptions import MaxToolCallsError, MaxTokensError, ResponseFormatError
 
 Handler = Union[TransportAdapter, MessageAdapter, ResponseFormatAdapter]
 
@@ -43,6 +43,14 @@ def _initialize_execution_context(handler: Handler, **kwargs: Any):
 
     return kwargs, tools, messages, max_tool_call_rounds, max_response_format_retries, parallel_tool_execution, full_response, graceful_error_handling, response_format_tool_call_required
 
+def _create_error_message(max_response_format_retries: int, error_message: str) -> str:
+    return f"""
+    Failed to parse structured output after {max_response_format_retries} retries.
+    TIP: If this is a data format issue, consider clearly documenting the response format parameters.
+    \n
+    {f"Error: {error_message}" if error_message else ""}
+    """
+
 def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
     (
         kwargs, tools, messages,
@@ -56,6 +64,11 @@ def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
         text, _, raw_response = handler.parse_response(response)
         _check_max_tokens(handler, response)
         return raw_response if full_response else text
+    
+    # Test whether all tools are sync
+    for tool in tools:
+        if asyncio.iscoroutinefunction(tool):
+            raise RuntimeError("Async tools are not supported in sync toolflow execution")
 
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     kwargs["tools"] = tool_schemas
@@ -68,13 +81,13 @@ def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
         _check_max_tokens(handler, response)
 
         if response_format_tool_call_required:
-            result = process_response_format(
-                handler, raw_response, text, tool_calls, tool_map, messages,
-                remaining_retry_count, max_response_format_retries
-            )
+            result = process_response_format(handler, raw_response, text, tool_calls, tool_map, messages,)
             if result is not None:
                 structured_response, should_continue = result
                 if should_continue:
+                    remaining_retry_count -= 1
+                    if remaining_retry_count < 0:
+                        raise ResponseFormatError(_create_error_message(max_response_format_retries, result))
                     continue
                 return raw_response if full_response else structured_response
 
@@ -82,7 +95,7 @@ def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
             return raw_response if full_response else text
 
         messages.append(handler.build_assistant_message(text, tool_calls, raw_response))
-        tool_results = execute_tools(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
+        tool_results = execute_tools_sync(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
         messages.extend(handler.build_tool_result_messages(tool_results))
         remaining_tool_calls -= 1
 
@@ -113,13 +126,13 @@ async def async_execution_loop(handler: Handler, **kwargs: Any) -> Any:
         _check_max_tokens(handler, response)
 
         if response_format_tool_call_required:
-            result = process_response_format(
-                handler, raw_response, text, tool_calls, tool_map, messages,
-                remaining_retry_count, max_response_format_retries
-            )
+            result = process_response_format(handler, raw_response, text, tool_calls, tool_map, messages)
             if result is not None:
                 structured_response, should_continue = result
                 if should_continue:
+                    remaining_retry_count -= 1
+                    if remaining_retry_count < 0:
+                        raise ResponseFormatError(_create_error_message(max_response_format_retries, result))
                     continue
                 return raw_response if full_response else structured_response
 
@@ -127,7 +140,7 @@ async def async_execution_loop(handler: Handler, **kwargs: Any) -> Any:
             return raw_response if full_response else text
 
         messages.append(handler.build_assistant_message(text, tool_calls, raw_response))
-        tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling)
+        tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling, parallel_tool_execution)
         messages.extend(handler.build_tool_result_messages(tool_results))
         remaining_tool_calls -= 1
 
@@ -149,6 +162,10 @@ def sync_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Generator[
             elif text:
                 yield text
         return
+    
+    for tool in tools:
+        if asyncio.iscoroutinefunction(tool):
+            raise RuntimeError("Async tools are not supported in sync streaming execution")
 
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     kwargs["tools"] = tool_schemas
@@ -172,7 +189,7 @@ def sync_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Generator[
         if accumulated_tool_calls:
             content = accumulated_content if accumulated_content else None
             messages.append(handler.build_assistant_message(content, accumulated_tool_calls, None))
-            tool_results = execute_tools(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
+            tool_results = execute_tools_sync(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
             messages.extend(handler.build_tool_result_messages(tool_results))
             kwargs["messages"] = messages
             remaining_tool_calls -= 1
@@ -187,7 +204,7 @@ async def async_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Asy
     (
         kwargs, tools, messages,
         max_tool_call_rounds, _,
-        _, full_response,
+        parallel_tool_execution, full_response,
         graceful_error_handling, _
     ) = _initialize_execution_context(handler, **kwargs)
 
@@ -232,7 +249,7 @@ async def async_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Asy
         if accumulated_tool_calls:
             content = accumulated_content if accumulated_content else None
             messages.append(handler.build_assistant_message(content, accumulated_tool_calls, None))
-            tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling)
+            tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling, parallel_tool_execution)
             messages.extend(handler.build_tool_result_messages(tool_results))
             kwargs["messages"] = messages
             remaining_tool_calls -= 1

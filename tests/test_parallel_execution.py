@@ -173,9 +173,11 @@ class TestAsyncParallelExecution:
         # The actual implementation would test async tool execution
         pass
     
-    def test_mixed_sync_async_tools_parallel(self, mock_openai_client):
+    @pytest.mark.asyncio
+    async def test_mixed_sync_async_tools_parallel(self, mock_async_openai_client):
         """Test parallel execution with mixed sync/async tools."""
-        client = from_openai(mock_openai_client)
+        from toolflow.providers.openai.wrappers import AsyncOpenAIWrapper
+        client = AsyncOpenAIWrapper(mock_async_openai_client)
         
         @tool
         def sync_tool() -> str:
@@ -196,10 +198,10 @@ class TestAsyncParallelExecution:
         ]
         mock_response_1 = create_openai_response(tool_calls=tool_calls)
         mock_response_2 = create_openai_response(content="Mixed execution completed")
-        mock_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
+        mock_async_openai_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
         
         start_time = time.time()
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Run sync and async tools"}],
             tools=[sync_tool, async_tool],

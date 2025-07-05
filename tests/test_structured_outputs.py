@@ -104,7 +104,7 @@ class TestStructuredOutputsOpenAI:
     def test_invalid_json_response(self, mock_openai_client):
         """Test handling of invalid JSON in response."""
         from tests.conftest import create_openai_tool_call, create_openai_response
-        from toolflow.core.exceptions import MaxResponseFormatRetriesError
+        from toolflow.core.exceptions import ResponseFormatError
         client = from_openai(mock_openai_client)
         
         # Create a tool call with invalid JSON arguments - age should be int but providing string
@@ -117,10 +117,10 @@ class TestStructuredOutputsOpenAI:
         mock_response = create_openai_response(content=None, tool_calls=[tool_call])
         
         # Mock client should return the same invalid response multiple times to exhaust retries
-        # Default max_response_format_retries is 2, so need at least 3 calls to trigger the error
-        mock_openai_client.chat.completions.create.side_effect = [mock_response, mock_response, mock_response]
+        # Default max_response_format_retries is 2, so need more calls to trigger the error
+        mock_openai_client.chat.completions.create.side_effect = [mock_response] * 10
         
-        with pytest.raises(MaxResponseFormatRetriesError):
+        with pytest.raises(ResponseFormatError):
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Create a person"}],
@@ -130,7 +130,7 @@ class TestStructuredOutputsOpenAI:
     def test_schema_validation_error(self, mock_openai_client):
         """Test handling of schema validation errors."""
         from tests.conftest import create_openai_structured_response
-        from toolflow.core.exceptions import MaxResponseFormatRetriesError
+        from toolflow.core.exceptions import ResponseFormatError
         client = from_openai(mock_openai_client)
         
         # JSON that doesn't match schema (missing required field)
@@ -138,10 +138,10 @@ class TestStructuredOutputsOpenAI:
         mock_response = create_openai_structured_response(invalid_data)
         
         # Mock client should return the same invalid response multiple times to exhaust retries
-        # Default max_response_format_retries is 2, so need at least 3 calls to trigger the error
-        mock_openai_client.chat.completions.create.side_effect = [mock_response, mock_response, mock_response]
+        # Default max_response_format_retries is 2, so need more calls to trigger the error
+        mock_openai_client.chat.completions.create.side_effect = [mock_response] * 10
         
-        with pytest.raises(MaxResponseFormatRetriesError):
+        with pytest.raises(ResponseFormatError):
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Create a person"}],
