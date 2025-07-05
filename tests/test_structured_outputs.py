@@ -104,19 +104,23 @@ class TestStructuredOutputsOpenAI:
     def test_invalid_json_response(self, mock_openai_client):
         """Test handling of invalid JSON in response."""
         from tests.conftest import create_openai_tool_call, create_openai_response
+        from toolflow.core.exceptions import MaxResponseFormatRetriesError
         client = from_openai(mock_openai_client)
         
-        # Create a tool call with invalid JSON arguments
+        # Create a tool call with invalid JSON arguments - age should be int but providing string
         from toolflow.core.constants import RESPONSE_FORMAT_TOOL_NAME
         tool_call = create_openai_tool_call(
             "call_invalid", 
             RESPONSE_FORMAT_TOOL_NAME, 
-            {"response": {"name": "John", "age": None}}  # Invalid age type
+            {"response": {"name": "John", "age": "invalid_age"}}  # Invalid age type - string instead of int
         )
         mock_response = create_openai_response(content=None, tool_calls=[tool_call])
-        mock_openai_client.chat.completions.create.return_value = mock_response
         
-        with pytest.raises((ValidationError, ValueError, TypeError)):
+        # Mock client should return the same invalid response multiple times to exhaust retries
+        # Default max_response_format_retries is 2, so need at least 3 calls to trigger the error
+        mock_openai_client.chat.completions.create.side_effect = [mock_response, mock_response, mock_response]
+        
+        with pytest.raises(MaxResponseFormatRetriesError):
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Create a person"}],
@@ -126,14 +130,18 @@ class TestStructuredOutputsOpenAI:
     def test_schema_validation_error(self, mock_openai_client):
         """Test handling of schema validation errors."""
         from tests.conftest import create_openai_structured_response
+        from toolflow.core.exceptions import MaxResponseFormatRetriesError
         client = from_openai(mock_openai_client)
         
         # JSON that doesn't match schema (missing required field)
         invalid_data = {"name": "John"}  # Missing age
         mock_response = create_openai_structured_response(invalid_data)
-        mock_openai_client.chat.completions.create.return_value = mock_response
         
-        with pytest.raises(ValidationError):
+        # Mock client should return the same invalid response multiple times to exhaust retries
+        # Default max_response_format_retries is 2, so need at least 3 calls to trigger the error
+        mock_openai_client.chat.completions.create.side_effect = [mock_response, mock_response, mock_response]
+        
+        with pytest.raises(MaxResponseFormatRetriesError):
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Create a person"}],
@@ -280,12 +288,13 @@ class TestStructuredOutputEdgeCases:
     
     def test_empty_response_content(self, mock_openai_client):
         """Test handling of empty response content."""
+        from toolflow.core.exceptions import ResponseFormatError
         client = from_openai(mock_openai_client)
         
         mock_response = create_openai_response(content="")
         mock_openai_client.chat.completions.create.return_value = mock_response
         
-        with pytest.raises((ValidationError, ValueError)):
+        with pytest.raises(ResponseFormatError):
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Create a person"}],
@@ -294,12 +303,13 @@ class TestStructuredOutputEdgeCases:
     
     def test_non_json_response_content(self, mock_openai_client):
         """Test handling of non-JSON response content."""
+        from toolflow.core.exceptions import ResponseFormatError
         client = from_openai(mock_openai_client)
         
         mock_response = create_openai_response(content="This is just plain text, not JSON")
         mock_openai_client.chat.completions.create.return_value = mock_response
         
-        with pytest.raises((ValidationError, ValueError)):
+        with pytest.raises(ResponseFormatError):
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Create a person"}],

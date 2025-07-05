@@ -171,7 +171,7 @@ class TestCompleteWorkflows:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Get a base number and multiply it by 3"}],
             tools=[get_base_number, multiply_by_factor],
-            max_tool_calls=5  # Allow multiple rounds
+            max_tool_call_rounds=5  # Allow multiple rounds
         )
         
         assert response == "The final result is 30"
@@ -459,7 +459,7 @@ class TestRealWorldScenarios:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Perform complete data analysis on database"}],
             tools=[load_data, analyze_data, generate_report],
-            max_tool_calls=10
+            max_tool_call_rounds=10
         )
         
         assert "completed successfully" in response

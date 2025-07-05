@@ -119,15 +119,15 @@ class TestFilterToolflowParams:
         kwargs = {
             "model": "gpt-4o-mini",
             "messages": [{"role": "user", "content": "Hello"}],
-            "max_tool_calls": 5,
+            "max_tool_call_rounds": 5,
             "parallel_tool_execution": True,
             "temperature": 0.7
         }
         
-        filtered_kwargs, max_tool_calls, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
+        filtered_kwargs, max_tool_call_rounds, max_response_format_retries, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
         
         # Check that toolflow params were extracted
-        assert max_tool_calls == 5
+        assert max_tool_call_rounds == 5
         assert parallel_tool_execution is True
         assert full_response is False  # Default
         assert graceful_error_handling is True  # Default
@@ -135,7 +135,7 @@ class TestFilterToolflowParams:
         # Check that other params remain
         assert filtered_kwargs["model"] == "gpt-4o-mini"
         assert filtered_kwargs["temperature"] == 0.7
-        assert "max_tool_calls" not in filtered_kwargs
+        assert "max_tool_call_rounds" not in filtered_kwargs
         assert "parallel_tool_execution" not in filtered_kwargs
     
     def test_filter_all_params(self):
@@ -145,7 +145,7 @@ class TestFilterToolflowParams:
         
         kwargs = {
             "model": "gpt-4o-mini",
-            "max_tool_calls": 10,
+            "max_tool_call_rounds": 10,
             "parallel_tool_execution": False,
             "response_format": MockModel,
             "full_response": True,
@@ -153,9 +153,9 @@ class TestFilterToolflowParams:
             "temperature": 0.8
         }
         
-        filtered_kwargs, max_tool_calls, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
+        filtered_kwargs, max_tool_call_rounds, max_response_format_retries, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
         
-        assert max_tool_calls == 10
+        assert max_tool_call_rounds == 10
         assert parallel_tool_execution is False
         assert full_response is True
         assert graceful_error_handling is False
@@ -170,10 +170,10 @@ class TestFilterToolflowParams:
         """Test that default values are used when params not provided."""
         kwargs = {"model": "gpt-4o-mini"}
         
-        filtered_kwargs, max_tool_calls, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
+        filtered_kwargs, max_tool_call_rounds, max_response_format_retries, parallel_tool_execution, full_response, graceful_error_handling = filter_toolflow_params(**kwargs)
         
         # Should use defaults from DEFAULT_PARAMS
-        assert max_tool_calls == 10  # From constants
+        assert max_tool_call_rounds == 10  # From constants
         assert parallel_tool_execution is False  # From constants
         assert full_response is False
         assert graceful_error_handling is True
@@ -201,7 +201,7 @@ class TestGetStructuredOutputTool:
         
         # Check docstring includes model name
         assert "TestModel" in tool_func.__doc__
-        assert "final response" in tool_func.__doc__.lower()
+        assert "final structured response" in tool_func.__doc__.lower()
     
     def test_structured_output_tool_with_different_models(self):
         """Test creating tools for different Pydantic models."""

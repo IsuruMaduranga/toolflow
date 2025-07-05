@@ -517,7 +517,7 @@ class TestBasicAnthropicToolCalling:
             max_tokens=1024,
             messages=[{"role": "user", "content": "What is 15 + 27?"}],
             tools=[simple_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -530,7 +530,7 @@ class TestBasicAnthropicToolCalling:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Calculate 10 + 5, then multiply the result by 3"}],
             tools=[simple_calculator],
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -544,7 +544,7 @@ class TestBasicAnthropicToolCalling:
             messages=[{"role": "user", "content": "Calculate the 10th and 12th Fibonacci numbers"}],
             tools=[get_fibonacci],
             parallel_tool_execution=True,
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -559,7 +559,7 @@ class TestBasicAnthropicToolCalling:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Add 10 and 20, get current time, and format 'hello world' in uppercase"}],
             tools=[simple_calculator, get_system_info, format_data],
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -575,7 +575,7 @@ class TestBasicAnthropicToolCalling:
             system="You are a helpful math assistant. Always use the calculator tool for calculations.",
             messages=[{"role": "user", "content": "What is 25 * 4?"}],
             tools=[simple_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -589,7 +589,7 @@ class TestBasicAnthropicToolCalling:
             system="You are a travel assistant. Use the weather tool to help users plan their trips.",
             messages=[{"role": "user", "content": "What's the weather like in San Francisco?"}],
             tools=[get_weather],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -614,7 +614,7 @@ class TestAnthropicAsyncFunctionality:
             max_tokens=1024,
             messages=[{"role": "user", "content": "What is 20 * 3?"}],
             tools=[simple_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -629,7 +629,7 @@ class TestAnthropicAsyncFunctionality:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Calculate 5 * 2 with a small delay"}],
             tools=[async_delay_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -645,7 +645,7 @@ class TestAnthropicAsyncFunctionality:
             messages=[{"role": "user", "content": "Add 15 and 25, then double the result with a delay"}],
             tools=[simple_calculator, async_delay_calculator],
             parallel_tool_execution=True,
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -664,7 +664,7 @@ class TestAnthropicAsyncFunctionality:
             messages=[{"role": "user", "content": "Calculate Fibonacci numbers for 8, 9, and 10, and get the current time"}],
             tools=[get_fibonacci, get_system_info],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         end_time = time.time()
@@ -697,7 +697,7 @@ class TestAnthropicStreamingFunctionality:
             messages=[{"role": "user", "content": "What is 7 * 6?"}],
             tools=[simple_calculator],
             stream=True,
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         content_chunks = []
@@ -735,7 +735,7 @@ class TestAnthropicStreamingFunctionality:
             tools=[simple_calculator, get_system_info, format_data],
             stream=True,
             parallel_tool_execution=True,
-            max_tool_calls=6
+            max_tool_call_rounds=6
         )
         
         content_chunks = []
@@ -762,7 +762,7 @@ class TestAnthropicStreamingFunctionality:
             messages=[{"role": "user", "content": "What is 9 * 4?"}],
             tools=[simple_calculator],
             stream=True,
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         content_chunks = []
@@ -813,7 +813,7 @@ class TestAnthropicStreamingFunctionality:
             tools=[get_fibonacci, simple_calculator, get_system_info],
             stream=True,
             parallel_tool_execution=True,
-            max_tool_calls=6
+            max_tool_call_rounds=6
         )
         
         content_chunks = []
@@ -848,14 +848,14 @@ class TestAnthropicErrorHandling:
             messages=[{"role": "user", "content": "Please divide 10 by zero"}],
             tools=[divide_by_zero],
             graceful_error_handling=True,
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
         # Should handle the error gracefully
         assert any(word in response.lower() for word in ["error", "divide", "zero"])
 
-    def test_max_tool_calls_limit(self, client):
+    def test_max_tool_call_rounds_limit(self, client):
         """Test that max tool calls limit is respected."""
         call_count = 0
         
@@ -874,7 +874,7 @@ class TestAnthropicErrorHandling:
                 max_tokens=1024,
                 messages=[{"role": "user", "content": "Call the recursive_tool with task 'start' and keep calling it until it's done. The tool will tell you when to call it again."}],
                 tools=[recursive_tool],
-                max_tool_calls=2  # Low limit
+                max_tool_call_rounds=2  # Low limit
             )
 
 
@@ -1052,7 +1052,7 @@ class TestAnthropicComplexDataTypes:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Create a user profile for Alice, age 30, email alice@example.com, active status true, with tags ['developer', 'team-lead']"}],
             tools=[create_user_profile],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1068,7 +1068,7 @@ class TestAnthropicComplexDataTypes:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Update task 123 with title 'Fix bug' to status 'completed' and priority 3"}],
             tools=[update_task_status],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1084,7 +1084,7 @@ class TestAnthropicComplexDataTypes:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Calculate the area and perimeter of a triangle with vertices at [[0,0], [3,0], [0,4]]"}],
             tools=[calculate_geometry_simple],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1098,7 +1098,7 @@ class TestAnthropicComplexDataTypes:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Process this mixed data: integers [1,2,3], floats [1.5, 2.5, 3.5], texts ['hello', 'world'], include statistics"}],
             tools=[process_mixed_data_simple],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1113,7 +1113,7 @@ class TestAnthropicComplexDataTypes:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Analyze these RGB colors: [[255,0,0], [0,255,0], [0,0,255]] - find average, brightest, and darkest"}],
             tools=[color_operations_simple],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1131,7 +1131,7 @@ class TestAnthropicComplexDataTypes:
                 "content": "Analyze user 'user123' activity with task counts: pending=5, completed=15, in_progress=3, completion times [2.5, 1.8, 3.2, 2.1], recent activities ['login', 'create_task', 'complete_task']"
             }],
             tools=[analyze_user_activity],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1152,7 +1152,7 @@ class TestAnthropicComplexDataTypes:
             }],
             tools=[create_user_profile, calculate_geometry_simple, color_operations_simple],
             parallel_tool_execution=True,
-            max_tool_calls=6
+            max_tool_call_rounds=6
         )
         
         assert response is not None
@@ -1180,7 +1180,7 @@ class TestAnthropicComplexDataTypes:
             }],
             tools=[create_user_profile, update_task_status],
             parallel_tool_execution=True,
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -1208,7 +1208,7 @@ class TestAnthropicComplexDataTypes:
             }],
             tools=[calculate_geometry_simple, process_mixed_data_simple],
             stream=True,
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         content_chunks = []
@@ -1283,7 +1283,7 @@ class TestAnthropicComplexDataTypesValidation:
             messages=[{"role": "user", "content": "Try to update task 999 with an invalid status 'invalid_status' and see what happens"}],
             tools=[update_task_status],
             graceful_error_handling=True,
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1298,7 +1298,7 @@ class TestAnthropicComplexDataTypesValidation:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Try to calculate geometry with only 2 points: [[0,0], [1,1]]"}],
             tools=[calculate_geometry_simple],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1313,7 +1313,7 @@ class TestAnthropicComplexDataTypesValidation:
             max_tokens=1024,
             messages=[{"role": "user", "content": "Analyze empty color list: []"}],
             tools=[color_operations_simple],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -1342,7 +1342,7 @@ class TestAnthropicComprehensiveWorkflow:
             }],
             tools=[simple_calculator, get_system_info, format_data, get_weather],
             parallel_tool_execution=True,
-            max_tool_calls=10
+            max_tool_call_rounds=10
         )
         
         assert response is not None
@@ -1366,7 +1366,7 @@ class TestAnthropicComprehensiveWorkflow:
             }],
             tools=[create_user_profile, calculate_geometry_simple, color_operations_simple, simple_calculator],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         assert response is not None
@@ -1397,7 +1397,7 @@ class TestAnthropicComprehensiveWorkflow:
             }],
             tools=[simple_calculator, get_fibonacci, get_system_info],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         assert response is not None
@@ -1426,7 +1426,7 @@ class TestAnthropicComprehensiveWorkflow:
             }],
             tools=[simple_calculator, async_delay_calculator, get_weather],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         assert response is not None
@@ -1454,7 +1454,7 @@ class TestAnthropicComprehensiveWorkflow:
             }],
             tools=[analyze_user_activity, calculate_geometry_simple, process_mixed_data_simple],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         assert response is not None
@@ -1489,7 +1489,7 @@ class TestAnthropicPerformanceBenchmarks:
             messages=[{"role": "user", "content": "Calculate Fibonacci for 10, 11, 12, and 13"}],
             tools=[get_fibonacci],
             parallel_tool_execution=False,
-            max_tool_calls=10
+            max_tool_call_rounds=10
         )
         sequential_time = time.time() - start_time
         
@@ -1501,7 +1501,7 @@ class TestAnthropicPerformanceBenchmarks:
             messages=[{"role": "user", "content": "Calculate Fibonacci for 10, 11, 12, and 13"}],
             tools=[get_fibonacci],
             parallel_tool_execution=True,
-            max_tool_calls=10
+            max_tool_call_rounds=10
         )
         parallel_time = time.time() - start_time
         
@@ -1525,7 +1525,7 @@ class TestAnthropicPerformanceBenchmarks:
             messages=[{"role": "user", "content": "Calculate fibonacci numbers from 5 to 15"}],
             tools=[get_fibonacci],
             parallel_tool_execution=True,
-            max_tool_calls=12,
+            max_tool_call_rounds=12,
             max_workers=5
         )
         
@@ -1557,7 +1557,7 @@ class TestAnthropicPerformanceBenchmarks:
                 analyze_user_activity
             ],
             parallel_tool_execution=True,
-            max_tool_calls=15,
+            max_tool_call_rounds=15,
             max_workers=5
         )
         
@@ -1591,7 +1591,7 @@ class TestAnthropicPerformanceBenchmarks:
             messages=[{"role": "user", "content": "Calculate multiple operations: 12*8, 15+25, 100/4, get time, and format 'async' in title case"}],
             tools=[simple_calculator, get_system_info, format_data],
             parallel_tool_execution=True,
-            max_tool_calls=10
+            max_tool_call_rounds=10
         )
         
         end_time = time.time()

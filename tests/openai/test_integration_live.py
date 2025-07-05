@@ -306,7 +306,21 @@ def analyze_user_activity(
     locations: List[LocationInfo],
     activity_data: Dict[str, List[float]]
 ) -> UserAnalytics:
-    """Analyze user activity with complex nested types."""
+    """Analyze user activity with complex nested types.
+    
+    This tool analyzes user activity patterns using structured data.
+    
+    Args:
+        users: List of user profiles. Each profile should contain name, age, email, is_active status.
+               Example: [{"name": "Bob", "age": 25, "email": "bob@test.com", "is_active": true}]
+        locations: List of location info with latitude, longitude, city, country.
+                  Example: [{"latitude": 40.7128, "longitude": -74.0060, "city": "New York", "country": "USA"}]
+        activity_data: Dictionary mapping activity types to lists of numeric scores.
+                      Example: {"logins": [1.0, 2.0, 3.0], "posts": [0.5, 1.5]}
+    
+    Returns:
+        UserAnalytics object with user details, location, activity score, preferences, and favorite colors.
+    """
     # Use first user and location for demo
     user = users[0] if users else UserProfile("Unknown", 0, "unknown@email.com")
     location = locations[0] if locations else LocationInfo(0.0, 0.0, "Unknown", "Unknown")
@@ -447,7 +461,7 @@ class TestBasicOpenAIToolCalling:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "What is 15 + 27?"}],
             tools=[simple_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -459,7 +473,7 @@ class TestBasicOpenAIToolCalling:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Calculate 10 + 5, then multiply the result by 3"}],
             tools=[simple_calculator],
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -474,7 +488,7 @@ class TestBasicOpenAIToolCalling:
             messages=[{"role": "user", "content": "Calculate the 10th and 12th Fibonacci numbers"}],
             tools=[get_fibonacci],
             parallel_tool_execution=True,
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         end_time = time.time()
@@ -491,7 +505,7 @@ class TestBasicOpenAIToolCalling:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Add 10 and 20, get current time, and format 'hello world' in uppercase"}],
             tools=[simple_calculator, get_system_info, format_data],
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -508,7 +522,7 @@ class TestBasicOpenAIToolCalling:
                 {"role": "user", "content": "What is 25 * 4?"}
             ],
             tools=[simple_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -523,7 +537,7 @@ class TestBasicOpenAIToolCalling:
                 {"role": "user", "content": "What's the weather like in San Francisco?"}
             ],
             tools=[get_weather],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -548,7 +562,7 @@ class TestComplexDataTypes:
                 "content": "Create a user profile for Alice, age 30, email alice@example.com, active status true, with tags ['developer', 'python']"
             }],
             tools=[create_user_profile],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -566,7 +580,7 @@ class TestComplexDataTypes:
                 "content": "Update a task with title 'Test Task', priority HIGH, status PENDING to status COMPLETED"
             }],
             tools=[update_task_status],
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -581,7 +595,7 @@ class TestComplexDataTypes:
                 "content": "Calculate geometry for a triangle with points at (0,0), (3,0), and (1.5,2.6)"
             }],
             tools=[calculate_geometry_simple],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -597,7 +611,7 @@ class TestComplexDataTypes:
                 "content": "Process mixed data: numbers [1, 2.5, 3], strings ['hello', 'world'], optional dict {'key': 'value'}, and tuple ('test', 42, true)"
             }],
             tools=[process_mixed_data_simple],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -611,13 +625,16 @@ class TestComplexDataTypes:
             model="gpt-4o-mini",
             messages=[{
                 "role": "user",
-                "content": """Analyze user activity for:
-                - User: Bob, age 25, email bob@test.com, active
-                - Location: 40.7128 latitude, -74.0060 longitude, New York, USA
-                - Activity data: {'logins': [1.0, 2.0, 3.0], 'posts': [0.5, 1.5]}"""
+                "content": """Please analyze user activity using the analyze_user_activity tool with this data:
+
+User: Bob, age 25, email bob@test.com, active status: true
+Location: latitude 40.7128, longitude -74.0060, city "New York", country "USA"  
+Activity data: logins [1.0, 2.0, 3.0], posts [0.5, 1.5]
+
+Call the tool with properly structured data formats as specified in the tool documentation."""
             }],
             tools=[analyze_user_activity],
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -634,7 +651,7 @@ class TestComplexDataTypes:
                 "content": "Find the average color of these RGB values: (255,0,0), (0,255,0), (0,0,255)"
             }],
             tools=[color_operations_simple],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -655,7 +672,7 @@ class TestComplexDataTypes:
             }],
             tools=[create_user_profile, calculate_geometry_simple, color_operations_simple],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         assert response is not None
@@ -830,7 +847,7 @@ class TestOpenAIStructuredOutput:
             }],
             tools=[create_user_profile],
             response_format=ComprehensiveReport,
-            max_tool_calls=6
+            max_tool_call_rounds=6
         )
         
         assert isinstance(result, ComprehensiveReport)
@@ -859,7 +876,7 @@ class TestOpenAIStructuredOutput:
                 - visualization_data: coordinate pairs like [[1, 100], [2, 150], [3, 200]]"""
             }],
             response_format=DataAnalysisResult,
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert isinstance(result, DataAnalysisResult)
@@ -891,7 +908,7 @@ class TestOpenAIAsyncFunctionality:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "What is 12 * 8?"}],
             tools=[simple_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -905,7 +922,7 @@ class TestOpenAIAsyncFunctionality:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Calculate 50 with 0.5 second delay"}],
             tools=[async_delay_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         assert response is not None
@@ -920,7 +937,7 @@ class TestOpenAIAsyncFunctionality:
             messages=[{"role": "user", "content": "Add 15 and 25, then double the result with a delay"}],
             tools=[simple_calculator, async_delay_calculator],
             parallel_tool_execution=True,
-            max_tool_calls=5
+            max_tool_call_rounds=5
         )
         
         assert response is not None
@@ -939,7 +956,7 @@ class TestOpenAIAsyncFunctionality:
             messages=[{"role": "user", "content": "Calculate Fibonacci numbers for 8, 9, and 10, and get the current time"}],
             tools=[get_fibonacci, get_system_info],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         end_time = time.time()
@@ -990,7 +1007,7 @@ class TestOpenAIStreamingFunctionality:
             messages=[{"role": "user", "content": "What is 7 * 6?"}],
             tools=[simple_calculator],
             stream=True,
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         content_chunks = []
@@ -1027,7 +1044,7 @@ class TestOpenAIStreamingFunctionality:
             tools=[simple_calculator, get_system_info, format_data],
             stream=True,
             parallel_tool_execution=True,
-            max_tool_calls=6
+            max_tool_call_rounds=6
         )
         
         content_chunks = []
@@ -1051,7 +1068,7 @@ class TestOpenAIStreamingFunctionality:
             messages=[{"role": "user", "content": "What is 9 * 4?"}],
             tools=[simple_calculator],
             stream=True,
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         content_chunks = []
@@ -1096,7 +1113,7 @@ class TestOpenAIStreamingFunctionality:
             tools=[get_fibonacci, simple_calculator, get_system_info],
             stream=True,
             parallel_tool_execution=True,
-            max_tool_calls=6
+            max_tool_call_rounds=6
         )
         
         content_chunks = []
@@ -1124,7 +1141,7 @@ class TestOpenAIErrorHandling:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Divide 10 by 0"}],
             tools=[simple_calculator],
-            max_tool_calls=3
+            max_tool_call_rounds=3
         )
         
         # Should handle the error gracefully and explain division by zero
@@ -1132,7 +1149,7 @@ class TestOpenAIErrorHandling:
         content = response.lower()
         assert any(word in content for word in ["error", "zero", "cannot", "divide"])
 
-    def test_max_tool_calls_limit(self, client):
+    def test_max_tool_call_rounds_limit(self, client):
         """Test that max tool calls limit is respected."""
         call_count = 0
         
@@ -1150,11 +1167,11 @@ class TestOpenAIErrorHandling:
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Call the recursive_tool with task 'start' and keep calling it until it's done. The tool will tell you when to call it again."}],
                 tools=[recursive_tool],
-                max_tool_calls=2  # Low limit
+                max_tool_call_rounds=2  # Low limit
             )
 
-    def test_max_tool_calls_with_weather(self, client):
-        """Test that max_tool_calls is respected"""
+    def test_max_tool_call_rounds_with_weather(self, client):
+        """Test that max_tool_call_rounds is respected"""
         call_count = 0
         
         @toolflow.tool
@@ -1173,7 +1190,7 @@ class TestOpenAIErrorHandling:
                     {"role": "user", "content": "Call the weather_loop_tool with location 'Paris' and keep calling it with different locations as the tool suggests."}
                 ],
                 tools=[weather_loop_tool],
-                max_tool_calls=2  # Very low limit to test the constraint
+                max_tool_call_rounds=2  # Very low limit to test the constraint
             )
 
 
@@ -1195,7 +1212,7 @@ class TestOpenAIComprehensiveWorkflow:
             }],
             tools=[simple_calculator, get_fibonacci, get_system_info, format_data],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         assert response is not None
@@ -1218,7 +1235,7 @@ class TestOpenAIComprehensiveWorkflow:
             messages=[{"role": "user", "content": "Calculate 20/4, get weather for Tokyo, and get system version"}],
             tools=[simple_calculator, get_weather, get_system_info],
             parallel_tool_execution=True,
-            max_tool_calls=6
+            max_tool_call_rounds=6
         )
         
         assert response is not None
@@ -1243,7 +1260,7 @@ class TestOpenAIComprehensiveWorkflow:
             }],
             tools=[simple_calculator, async_delay_calculator, get_weather],
             parallel_tool_execution=True,
-            max_tool_calls=8
+            max_tool_call_rounds=8
         )
         
         assert response is not None
@@ -1273,7 +1290,7 @@ class TestOpenAIPerformanceBenchmarks:
             messages=[{"role": "user", "content": "Calculate Fibonacci for 10, 11, 12, and 13"}],
             tools=[get_fibonacci],
             parallel_tool_execution=False,
-            max_tool_calls=10
+            max_tool_call_rounds=10
         )
         sequential_time = time.time() - start_time
         
@@ -1284,7 +1301,7 @@ class TestOpenAIPerformanceBenchmarks:
             messages=[{"role": "user", "content": "Calculate Fibonacci for 10, 11, 12, and 13"}],
             tools=[get_fibonacci],
             parallel_tool_execution=True,
-            max_tool_calls=10
+            max_tool_call_rounds=10
         )
         parallel_time = time.time() - start_time
         
@@ -1307,7 +1324,7 @@ class TestOpenAIPerformanceBenchmarks:
             messages=[{"role": "user", "content": "Calculate fibonacci numbers from 5 to 15"}],
             tools=[get_fibonacci],
             parallel_tool_execution=True,
-            max_tool_calls=12,
+            max_tool_call_rounds=12,
             max_workers=5
         )
         
@@ -1333,7 +1350,7 @@ class TestOpenAIPerformanceBenchmarks:
             messages=[{"role": "user", "content": "Calculate multiple operations: 12*8, 15+25, 100/4, get time, and format 'async' in title case"}],
             tools=[simple_calculator, get_system_info, format_data],
             parallel_tool_execution=True,
-            max_tool_calls=10
+            max_tool_call_rounds=10
         )
         
         end_time = time.time()
