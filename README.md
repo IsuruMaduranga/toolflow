@@ -1,4 +1,4 @@
-## Toolflow - Add auto tool calling and structured outputs to official LLM SDKs
+## Toolflow - Just wrap any LLM SDK and add auto tool calling and structured outputs
 
 [![PyPI version](https://badge.fury.io/py/toolflow.svg)](https://badge.fury.io/py/toolflow)
 [![Python versions](https://img.shields.io/pypi/pyversions/toolflow.svg)](https://pypi.org/project/toolflow/)
@@ -30,29 +30,51 @@ from openai import OpenAI
 client = toolflow.from_openai(OpenAI())
 
 # Now you have auto-parallel tools + structured outputs
-def get_weather(city: str) -> str:
-    """Get weather for a city."""
-    return f"Weather in {city}: Sunny, 72°F"
+from pydantic import BaseModel
+from typing import List
+
+class CityWeather(BaseModel):
+    city: str
+    temperature: float
+    condition: str
+    humidity: int
+
+class WeatherRequest(BaseModel):
+    cities: List[str]
+    include_humidity: bool
+    units: str
+
+def get_weather(request: WeatherRequest) -> List[CityWeather]:
+    """Get weather for multiple cities with specific requirements."""
+    results = []
+    for city in request.cities:
+        results.append(CityWeather(
+            city=city, 
+            temperature=72.0, 
+            condition="Sunny", 
+            humidity=45 if request.include_humidity else 0
+        ))
+    return results
 
 result = client.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "What's the weather in NYC and London?"}],
+    messages=[{"role": "user", "content": "Get weather for NYC and London with humidity in Celsius"}],
     tools=[get_weather]
 )
-print(result)  # Direct string output
+print(result)  # Direct List[CityWeather] output
 
 # Or get a weather report with structured output
 class WeatherReport(BaseModel):
-    weather: str
-    temperature: int
+    cities: List[CityWeather]
+    average_temperature: float
 
 result = client.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "What's the weather in NYC and London?"}],
+    messages=[{"role": "user", "content": "Get weather for NYC and London with humidity in Celsius"}],
     tools=[get_weather],
     response_format=WeatherReport
 )
-print(result)  # You get a WeatherReport object
+print(result)  # You get a WeatherReport object with nested CityWeather objects
 ```
 
 Find more [examples](https://github.com/IsuruMaduranga/toolflow/tree/main/examples) in the repository.
@@ -104,9 +126,9 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)  # Same as original SDK
 ```
 
-## Automatic Parallel Tool Calling
+## Automatic Parallel Tool Execution
 
-Transform any function into an LLM tool with automatic parallel execution:
+If model provides multiple tools, Toolflow will automatically execute them in parallel.
 
 ```python
 import toolflow
@@ -119,23 +141,62 @@ openai_client = toolflow.from_openai(OpenAI())
 anthropic_client = toolflow.from_anthropic(Anthropic())
 
 # Any function becomes a tool automatically
-def get_weather(city: str) -> str:
-    """Get current weather for a city."""
-    time.sleep(1)  # Simulated API call
-    return f"Weather in {city}: Sunny, 72°F"
+from pydantic import BaseModel
+from typing import List, Dict
+from enum import Enum
 
-def get_population(city: str) -> str:
-    """Get population information for a city."""
-    time.sleep(1)  # Simulated API call
-    return f"Population of {city}: 8.3 million"
+class CityRequest(BaseModel):
+    cities: List[str]
+    include_coordinates: bool
+    data_type: str
 
-def calculate(expression: str) -> float:
-    """Safely evaluate mathematical expressions."""
-    return eval(expression.replace("^", "**"))
+class CalculationRequest(BaseModel):
+    expressions: List[str]
+    precision: int
+    format_output: bool
+
+def get_weather(request: CityRequest) -> List[Dict[str, any]]:
+    """Get current weather for multiple cities with specific data requirements."""
+    time.sleep(1)  # Simulated API call
+    results = []
+    for city in request.cities:
+        result = {
+            "city": city,
+            "weather": "Sunny, 72°F",
+            "population": "8.3 million"
+        }
+        if request.include_coordinates:
+            result["coordinates"] = [40.7128, -74.0060] if city == "NYC" else [51.5074, -0.1278]
+        results.append(result)
+    return results
+
+def get_population(request: CityRequest) -> List[Dict[str, any]]:
+    """Get population information for multiple cities."""
+    time.sleep(1)  # Simulated API call
+    results = []
+    for city in request.cities:
+        result = {
+            "city": city,
+            "population": "8.3 million"
+        }
+        if request.include_coordinates:
+            result["coordinates"] = [40.7128, -74.0060] if city == "NYC" else [51.5074, -0.1278]
+        results.append(result)
+    return results
+
+def calculate(request: CalculationRequest) -> List[float]:
+    """Safely evaluate multiple mathematical expressions with precision control."""
+    results = []
+    for expr in request.expressions:
+        result = eval(expr.replace("^", "**"))
+        if request.format_output:
+            result = round(result, request.precision)
+        results.append(result)
+    return results
 
 # Same code works with both providers
 tools = [get_weather, get_population, calculate]
-messages = [{"role": "user", "content": "What's the weather and population in NYC, plus what's 15 * 23?"}]
+messages = [{"role": "user", "content": "Get weather and population for NYC and London with coordinates, and calculate 15 * 23 and 10 / 2 with 2 decimal precision"}]
 
 # Sequential execution (default for synchronous execution)
 start = time.time()
@@ -257,14 +318,24 @@ def calculate(expression: str) -> float:
     """Safely evaluate mathematical expressions."""
     return eval(expression.replace("^", "**"))
 
-def analyze_data(data: List[float]) -> dict:
+class DataStatistics(BaseModel):
+    mean: float
+    min: float
+    max: float
+    count: int
+    variance: float
+
+def analyze_data(data: List[float]) -> DataStatistics:
     """Analyze numerical data and return statistics."""
-    return {
-        "mean": sum(data) / len(data),
-        "min": min(data),
-        "max": max(data),
-        "count": len(data)
-    }
+    mean = sum(data) / len(data)
+    variance = sum((x - mean) ** 2 for x in data) / len(data)
+    return DataStatistics(
+        mean=mean,
+        min=min(data),
+        max=max(data),
+        count=len(data),
+        variance=variance
+    )
 
 # Reasoning mode with tools and structured output
 client = toolflow.from_openai(OpenAI())
@@ -296,13 +367,45 @@ class ResearchFindings(BaseModel):
     key_insights: List[str]
     recommendations: List[str]
 
-def search_web(query: str) -> str:
-    """Search for information (simulated)."""
-    return f"Research findings for: {query}"
+class WebSearchResult(BaseModel):
+    query: str
+    findings: List[str]
+    sources: List[str]
 
-def analyze_trends(data: str) -> str:
-    """Analyze trends in data (simulated)."""
-    return f"Trend analysis: {data}"
+class TrendAnalysis(BaseModel):
+    data: str
+    trends: List[str]
+    confidence: float
+
+class WebSearchParams(BaseModel):
+    query: str
+    max_findings: int
+    include_sources: bool
+
+class TrendAnalysisParams(BaseModel):
+    data: str
+    analysis_depth: str
+    include_confidence: bool
+
+def search_web(params: WebSearchParams) -> WebSearchResult:
+    """Search for information with configurable parameters."""
+    findings = [f"Finding {i} for {params.query}" for i in range(1, min(params.max_findings + 1, 4))]
+    sources = ["source1.com", "source2.com"] if params.include_sources else []
+    return WebSearchResult(
+        query=params.query,
+        findings=findings,
+        sources=sources
+    )
+
+def analyze_trends(params: TrendAnalysisParams) -> TrendAnalysis:
+    """Analyze trends in data with depth and confidence options."""
+    trends = ["Trend 1", "Trend 2", "Trend 3"]
+    confidence = 0.85 if params.include_confidence else 0.0
+    return TrendAnalysis(
+        data=params.data,
+        trends=trends,
+        confidence=confidence
+    )
 
 # Extended thinking with tools and structured output
 anthropic_client = toolflow.from_anthropic(Anthropic())
@@ -345,27 +448,73 @@ from anthropic import AsyncAnthropic
 openai_async = toolflow.from_openai(AsyncOpenAI())
 anthropic_async = toolflow.from_anthropic(AsyncAnthropic())
 
-async def async_api_call(query: str) -> str:
-    """Async tool for I/O operations."""
+from pydantic import BaseModel
+from typing import List, Dict
+
+class ApiResult(BaseModel):
+    query: str
+    result: str
+    metadata: Dict[str, str]
+
+class DatabaseRecord(BaseModel):
+    table: str
+    data: List[Dict[str, str]]
+    count: int
+
+class ApiRequest(BaseModel):
+    query: str
+    timeout: int
+    retry_count: int
+
+class CalculationParams(BaseModel):
+    x: int
+    y: int
+    operation: str
+
+class DatabaseQuery(BaseModel):
+    table: str
+    filters: Dict[str, str]
+    limit: int
+
+async def async_api_call(request: ApiRequest) -> ApiResult:
+    """Async tool for I/O operations with configurable parameters."""
     await asyncio.sleep(0.5)  # Non-blocking delay
-    return f"Async result: {query}"
+    return ApiResult(
+        query=request.query,
+        result=f"Async result: {request.query} (timeout: {request.timeout}s, retries: {request.retry_count})",
+        metadata={"source": "api", "timestamp": "2024-01-01", "timeout": request.timeout}
+    )
 
-def sync_calculation(x: int, y: int) -> int:
-    """Sync tools work too."""
+def sync_calculation(params: CalculationParams) -> int:
+    """Sync tools work too with structured parameters."""
     time.sleep(0.1)  # Blocking delay
-    return x * y
+    if params.operation == "multiply":
+        return params.x * params.y
+    elif params.operation == "add":
+        return params.x + params.y
+    elif params.operation == "subtract":
+        return params.x - params.y
+    else:
+        return params.x / params.y
 
-async def async_database_query(table: str) -> str:
-    """Another async tool."""
+async def async_database_query(query: DatabaseQuery) -> DatabaseRecord:
+    """Another async tool with complex query parameters."""
     await asyncio.sleep(0.3)
-    return f"Async DB data from {table}"
+    # Simulate filtering based on query parameters
+    all_data = [{"id": "1", "name": "John"}, {"id": "2", "name": "Jane"}]
+    filtered_data = all_data[:query.limit]  # Simple limit simulation
+    return DatabaseRecord(
+        table=query.table,
+        data=filtered_data,
+        count=len(filtered_data)
+    )
 
 async def main():
     # Mix sync and async tools - By default async tools run concurrently with asyncio.gather()
     # Sync tools run in thread pool concurrently
     result = await openai_async.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Call API with 'test', multiply 10*5, query users table"}],
+        messages=[{"role": "user", "content": "Call API with 'test' (timeout 30s, 3 retries), multiply 10*5, query users table with limit 5"}],
         tools=[async_api_call, sync_calculation, async_database_query]
     )
     print(result)
@@ -382,20 +531,55 @@ asyncio.run(main())
 Streaming works exactly like the official SDKs, with automatic tool execution:
 
 ```python
-def search_web(query: str) -> str:
-    """Search the web for information."""
-    time.sleep(0.5)  # Simulated search delay
-    return f"Found tutorials for: {query}"
+from pydantic import BaseModel
+from typing import List
 
-def get_code_examples(language: str) -> str:
-    """Get code examples for a language."""
+class SearchResult(BaseModel):
+    query: str
+    results: List[str]
+    total_found: int
+
+class CodeExample(BaseModel):
+    language: str
+    examples: List[str]
+    difficulty: str
+
+class SearchRequest(BaseModel):
+    query: str
+    max_results: int
+    include_sources: bool
+
+class CodeRequest(BaseModel):
+    language: str
+    difficulty: str
+    include_comments: bool
+
+def search_web(request: SearchRequest) -> SearchResult:
+    """Search the web for information with configurable parameters."""
+    time.sleep(0.5)  # Simulated search delay
+    results = [f"Tutorial {i} for {request.query}" for i in range(1, min(request.max_results + 1, 4))]
+    return SearchResult(
+        query=request.query,
+        results=results,
+        total_found=len(results)
+    )
+
+def get_code_examples(request: CodeRequest) -> CodeExample:
+    """Get code examples for a language with difficulty and formatting options."""
     time.sleep(0.3)
-    return f"Code examples for {language}: print('hello world')"
+    examples = [f"print('hello world')", f"def hello(): return 'world'"]
+    if request.include_comments:
+        examples = [f"# {example}" for example in examples]
+    return CodeExample(
+        language=request.language,
+        examples=examples,
+        difficulty=request.difficulty
+    )
 
 # Streaming with tools
 stream = client.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Search for Python tutorials and show me examples"}],
+    messages=[{"role": "user", "content": "Search for Python tutorials (max 3 results) and show me beginner examples with comments"}],
     tools=[search_web, get_code_examples],
     stream=True,
     parallel_tool_execution=True  # Tools execute in parallel during streaming
@@ -630,11 +814,10 @@ toolflow.from_anthropic(client, full_response=False) # Wraps any Anthropic clien
 📊 TOOLFLOW CONCURRENCY BEHAVIOR
 
 SYNC OPERATIONS
-├── Default: Sequential execution
-└── parallel_tool_execution=True
-                ├── No custom executor → Global ThreadPoolExecutor (4 workers)
-                ├── Change with toolflow.set_max_workers(workers)
-                └── Change thread pool with toolflow.set_executor(executor)
+├── Default: Parallel execution
+    ├── No custom executor → Global ThreadPoolExecutor (4 workers)
+    ├── Change with toolflow.set_max_workers(workers)
+    └── Change thread pool with toolflow.set_executor(executor)
 
 ASYNC OPERATIONS  
 ├── Default: Parallel by default
@@ -708,7 +891,8 @@ client.chat.completions.create(
     tools=[...],                      # List of functions (any callable)
     response_format=BaseModel,        # Pydantic model for structured output
     parallel_tool_execution=False,    # Enable concurrent tool execution
-    max_tool_calls=10,               # Safety limit for tool rounds
+    max_tool_call_rounds=10,               # Safety limit for tool rounds
+    max_response_format_retries=2,        # Maximum number of retries to get correct structured output from model
     graceful_error_handling=True,    # Handle tool errors gracefully
     full_response=False,             # Return full SDK response vs simplified
 )

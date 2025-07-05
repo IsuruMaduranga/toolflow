@@ -80,7 +80,7 @@ async def execute_tools_async(
     results = []
     unknown_tool_results = []
 
-    if parallel:
+    if parallel and len(tool_calls) > 1:
         all_tasks = []
         for tool_call in tool_calls:
             tool_name = tool_call["function"]["name"]
@@ -155,7 +155,7 @@ def execute_tools_sync(
 
     results = []
 
-    if parallel:
+    if parallel and len(tool_calls) > 1:
         executor = _get_sync_executor()
         futures = []
 
