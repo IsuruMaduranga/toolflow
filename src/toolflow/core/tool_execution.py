@@ -8,19 +8,8 @@ import inspect
 from pydantic import BaseModel
 import dataclasses
 from enum import Enum
-
-# ===== CUSTOM EXCEPTIONS =====
-
-class MaxToolCallsError(Exception):
-    """
-    Raised when the maximum number of tool calls is reached without completion.
-    
-    This allows callers to catch this specific case and potentially increase
-    the max_tool_calls budget or handle the scenario appropriately.
-    """
-    def __init__(self, message: str, max_tool_calls: Optional[int] = None):
-        super().__init__(message)
-        self.max_tool_calls = max_tool_calls
+from .constants import RESPONSE_FORMAT_TOOL_NAME
+from .exceptions import MaxToolCallsError
 
 # ===== GLOBAL EXECUTOR (SHARED BY SYNC AND ASYNC) =====
 
@@ -104,9 +93,12 @@ def execute_tools(
         # Sequential execution (default for playground use)
         results = []
         for tool_call in tool_calls:
+            # Ignore response_format tool call
+            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+                continue
             tool_name = tool_call["function"]["name"]
             if tool_name in tool_map:
-                results.append(_run_sync_tool(tool_call, tool_map[tool_name], graceful_error_handling))
+                results.append(run_sync_tool(tool_call, tool_map[tool_name], graceful_error_handling))
             else:
                 # Handle unknown tool
                 if graceful_error_handling:
@@ -125,10 +117,13 @@ def execute_tools(
     tool_results = []
     
     for tool_call in tool_calls:
+        # Ignore response_format tool call
+        if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+            continue
         tool_name = tool_call["function"]["name"]
         if tool_name in tool_map:
             future = executor.submit(
-                _run_sync_tool,
+                run_sync_tool,
                 tool_call,
                 tool_map[tool_name],
                 graceful_error_handling
@@ -177,12 +172,15 @@ async def execute_tools_async(
     unknown_tool_results = []
     
     for tool_call in tool_calls:
+        # Ignore response_format tool call
+        if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+            continue
         tool_name = tool_call["function"]["name"]
         tool_func = tool_map.get(tool_name)
         if tool_func:
             if asyncio.iscoroutinefunction(tool_func):
                 async_tool_tasks.append(
-                    _run_async_tool(tool_call, tool_func, graceful_error_handling)
+                    run_async_tool(tool_call, tool_func, graceful_error_handling)
                 )
             else:
                 sync_tool_calls.append(tool_call)
@@ -205,7 +203,7 @@ async def execute_tools_async(
         futures = [
             loop.run_in_executor(
                 _get_async_executor(), # Custom executor or None (asyncio default)
-                _run_sync_tool,
+                run_sync_tool,
                 call,
                 tool_map[call["function"]["name"]],
                 graceful_error_handling
@@ -246,14 +244,13 @@ async def execute_tools_async(
 
 def _prepare_tool_arguments(tool_func: Callable[..., Any], arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Prepare tool arguments by converting JSON-like data to appropriate Python types.
+    Prepare function arguments by converting JSON-like values to proper Python types.
     
-    Supports conversion for:
-    - Pydantic BaseModel: dict -> BaseModel instance
-    - Dataclasses: dict -> dataclass instance  
-    - Enums: str/int -> enum instance
-    - NamedTuples: dict -> NamedTuple instance
-    - Union types: try each type in the union
+    This handles conversion of:
+    - Pydantic models: dict -> model.model_validate(dict)
+    - Dataclasses: dict -> dataclass(**dict)
+    - Enums: str/int -> enum member
+    - Collections: recursive conversion of elements
     - Optional types: handle None and wrapped type
     - Generic types: List[T], Dict[K,V] with element conversion
     - Custom classes: dict -> class instance (if accepts **kwargs)
@@ -264,6 +261,9 @@ def _prepare_tool_arguments(tool_func: Callable[..., Any], arguments: Dict[str, 
         
     Returns:
         Prepared arguments with proper Python types instantiated
+        
+    Raises:
+        Exception: If argument conversion fails (validation errors are not suppressed)
     """
     sig = inspect.signature(tool_func)
     prepared_args = {}
@@ -273,12 +273,10 @@ def _prepare_tool_arguments(tool_func: Callable[..., Any], arguments: Dict[str, 
             param_annotation = param.annotation
             arg_value = arguments[param_name]
             
-            try:
-                converted_value = _convert_argument_type(param_annotation, arg_value)
-                prepared_args[param_name] = converted_value
-            except Exception:
-                # If conversion fails, pass the original value and let the function handle it
-                prepared_args[param_name] = arg_value
+            # Always convert arguments and let validation errors bubble up
+            # This allows the model to see validation errors and retry with corrected data
+            converted_value = _convert_argument_type(param_annotation, arg_value)
+            prepared_args[param_name] = converted_value
         # Note: We don't add missing arguments - let the function handle defaults/required params
     
     return prepared_args
@@ -422,7 +420,7 @@ def _convert_generic_type(target_type: Any, value: Any) -> Any:
     # If we can't handle this generic type, return as-is
     return value
 
-def _run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], graceful_error_handling: bool = True) -> Dict[str, Any]:
+def run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], graceful_error_handling: bool = True) -> Dict[str, Any]:
     try:
         # Prepare arguments by converting dictionaries to Pydantic models when needed
         prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
@@ -436,9 +434,12 @@ def _run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], gra
                 "is_error": True,
             }
         else:
-            raise
+            error_msg = f"""Error executing tool {tool_call['function']['name']}: {e}
+            TIP: If this is a data format issue, consider clearly documenting the tool's parameters.
+            """
+            raise type(e)(error_msg) from e
 
-async def _run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Coroutine[Any, Any, Any]], graceful_error_handling: bool = True) -> Dict[str, Any]:
+async def run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Coroutine[Any, Any, Any]], graceful_error_handling: bool = True) -> Dict[str, Any]:
     try:
         # Prepare arguments by converting dictionaries to Pydantic models when needed
         prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
@@ -452,4 +453,7 @@ async def _run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Co
                 "is_error": True,
             }
         else:
-            raise
+            error_msg = f"""Error executing tool {tool_call['function']['name']}: {e}
+            TIP: If this is a data format issue, consider clearly documenting the tool's parameters.
+            """
+            raise type(e)(error_msg) from e

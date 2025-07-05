@@ -1,7 +1,9 @@
 # src/toolflow/core/utils.py
-from typing import Dict, Any, Tuple, Callable, get_origin, get_args, Optional
+from typing import Dict, Any, Tuple, Callable, get_origin, get_args, Optional, List
 from typing_extensions import Annotated
 from .constants import DEFAULT_PARAMS, RESPONSE_FORMAT_TOOL_NAME
+from .exceptions import ResponseFormatError
+from .tool_execution import run_sync_tool
 import inspect
 
 __all__ = ['filter_toolflow_params', 'get_structured_output_tool', 'get_tool_schema', 'RESPONSE_FORMAT_TOOL_NAME']
@@ -15,13 +17,14 @@ def filter_toolflow_params(**kwargs: Any) -> Tuple[Dict[str, Any], int, bool, An
     filtered_kwargs = kwargs.copy()
     
     # Default values for toolflow params
-    max_tool_calls = filtered_kwargs.pop("max_tool_calls", DEFAULT_PARAMS["max_tool_calls"])
+    max_tool_call_rounds = filtered_kwargs.pop("max_tool_call_rounds", DEFAULT_PARAMS["max_tool_call_rounds"])
+    max_response_format_retries = filtered_kwargs.pop("max_response_format_retries", DEFAULT_PARAMS["max_response_format_retries"])
     parallel_tool_execution = filtered_kwargs.pop("parallel_tool_execution", DEFAULT_PARAMS["parallel_tool_execution"])
     full_response = filtered_kwargs.pop("full_response", DEFAULT_PARAMS["full_response"])
     graceful_error_handling = filtered_kwargs.pop("graceful_error_handling", DEFAULT_PARAMS["graceful_error_handling"])
     
     # Return a tuple of the filtered kwargs and toolflow params
-    return filtered_kwargs, max_tool_calls, parallel_tool_execution, full_response, graceful_error_handling
+    return filtered_kwargs, max_tool_call_rounds, max_response_format_retries, parallel_tool_execution, full_response, graceful_error_handling
 
 def get_structured_output_tool(pydantic_model: Any) -> Callable[..., str]:
     """Get the tool definition for structured output."""
@@ -145,3 +148,71 @@ def get_tool_schema(
             "strict": strict
         }
     }
+
+def process_response_format(
+    handler,
+    raw_response: Any,
+    text: Optional[str],
+    tool_calls: List[Dict[str, Any]],
+    tool_map: Dict[str, Any],
+    messages: List[Dict[str, Any]],
+    remaining_retry_count: int,
+    max_response_format_retries: int
+) -> Optional[Tuple[Any, bool]]:
+    """
+    Process response format handling for structured outputs.
+    
+    Returns:
+        None if no response format processing needed
+        Tuple of (structured_response, should_continue) if processing occurred
+    """
+    
+    def _create_error_message() -> str:
+        return f"""
+        Failed to parse structured output after {max_response_format_retries} retries.
+        TIP: If this is a data format issue, consider clearly documenting the response format parameters.
+        """
+    
+    def _handle_no_tool_calls() -> Tuple[Any, bool]:
+        """Handle case when no tool calls are present."""
+        if remaining_retry_count <= 0:
+            raise ResponseFormatError(_create_error_message())
+        
+        # Add retry message and continue
+        messages.append(handler.build_response_format_retry_message())
+        return None, True
+    
+    def _handle_response_format_tool_call(tool_call: Dict[str, Any]) -> Tuple[Any, bool]:
+        """Handle a single response format tool call."""
+        tool_result = run_sync_tool(tool_call, tool_map[tool_call["function"]["name"]], True)
+        
+        if tool_result.get("is_error", False):
+            if remaining_retry_count <= 0:
+                raise ResponseFormatError(_create_error_message() + f"\nError: {tool_result['output']}")
+            
+            # Add error context and retry
+            messages.append(handler.build_assistant_message(text, [tool_call], raw_response))
+            messages.extend(handler.build_tool_result_messages([tool_result]))
+            return None, True
+        
+        # Success - return the structured response
+        return tool_result["output"], False
+    
+    def _find_response_format_tool_call() -> Optional[Dict[str, Any]]:
+        """Find the response format tool call if it exists."""
+        for tool_call in tool_calls:
+            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+                return tool_call
+        return None
+    
+    # Process response format logic
+    if not tool_calls:
+        return _handle_no_tool_calls()
+    
+    response_format_tool_call = _find_response_format_tool_call()
+    if response_format_tool_call:
+        return _handle_response_format_tool_call(response_format_tool_call)
+    
+    # No response format tool call found - let normal execution continue
+    return None
+    

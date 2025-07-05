@@ -48,7 +48,8 @@ class MessagesWrapper(ExecutorMixin):
         top_k: Optional[int] | NotGiven = NOT_GIVEN,
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         response_format: Optional[Any] = None,
         full_response: Optional[bool] = None,
@@ -78,7 +79,7 @@ class MessagesWrapper(ExecutorMixin):
             top_p: Nucleus sampling parameter (0-1)
 
             # Toolflow-specific parameters 
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular pydantic models.
@@ -108,7 +109,8 @@ class MessagesWrapper(ExecutorMixin):
         top_k: Optional[int] | NotGiven = NOT_GIVEN,
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         response_format: Optional[Any] = None,
         full_response: Optional[bool] = None,
@@ -147,7 +149,7 @@ class MessagesWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular pydantic models.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full Anthropic response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -180,7 +182,8 @@ class MessagesWrapper(ExecutorMixin):
         top_k: Optional[int] | NotGiven = NOT_GIVEN,
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         response_format: Optional[Any] = None,
         full_response: Optional[bool] = None,
@@ -219,7 +222,7 @@ class MessagesWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular pydantic models.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full Anthropic response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -277,7 +280,8 @@ class AsyncMessagesWrapper(ExecutorMixin):
         top_k: Optional[int] | NotGiven = NOT_GIVEN,
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         response_format: Optional[Any] = None,
         full_response: Optional[bool] = None,
@@ -316,7 +320,8 @@ class AsyncMessagesWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular pydantic models.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 50)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 50)
+            max_response_format_retries: Maximum number of response format retries (default: 2)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full Anthropic response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -349,7 +354,8 @@ class AsyncMessagesWrapper(ExecutorMixin):
         top_k: Optional[int] | NotGiven = NOT_GIVEN,
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         response_format: Optional[Any] = None,
         full_response: Optional[bool] = None,
@@ -388,7 +394,8 @@ class AsyncMessagesWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular pydantic models.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 50)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 50)
+            max_response_format_retries: Maximum number of response format retries (default: 2)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full Anthropic response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -415,7 +422,8 @@ class AsyncMessagesWrapper(ExecutorMixin):
         top_k: Optional[int] | NotGiven = NOT_GIVEN,
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         response_format: Optional[Any] = None,
         full_response: Optional[bool] = None,
@@ -448,7 +456,8 @@ class AsyncMessagesWrapper(ExecutorMixin):
             top_p: Nucleus sampling parameter (0-1)
             
             # Toolflow-specific parameters
-            max_tool_calls: Maximum number of tool calls to execute (default: 50)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 50)
+            max_response_format_retries: Maximum number of response format retries (default: 2)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             response_format: Format specification for model output
             full_response: Return full Anthropic response object instead of content only

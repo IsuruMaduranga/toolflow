@@ -78,7 +78,8 @@ class CompletionsWrapper(ExecutorMixin):
         top_p: Union[Optional[float], NotGiven] = NOT_GIVEN,
         user: Union[str, NotGiven] = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         full_response: Optional[bool] = None,
         graceful_error_handling: bool = True,
@@ -121,7 +122,8 @@ class CompletionsWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular python functions as tools.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
+            max_response_format_retries: Maximum number of response format retries (default: 2)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -163,7 +165,8 @@ class CompletionsWrapper(ExecutorMixin):
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         user: str | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         full_response: Optional[bool] = None,
         graceful_error_handling: bool = True,
@@ -206,7 +209,8 @@ class CompletionsWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular python functions as tools.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
+            max_response_format_retries: Maximum number of response format retries (default: 2)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -248,7 +252,8 @@ class CompletionsWrapper(ExecutorMixin):
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         user: str | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         full_response: Optional[bool] = None,
         graceful_error_handling: bool = True,
@@ -291,7 +296,8 @@ class CompletionsWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular python functions as tools.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
+            max_response_format_retries: Maximum number of response format retries (default: 2)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -367,7 +373,8 @@ class AsyncCompletionsWrapper(ExecutorMixin):
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         user: str | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         full_response: Optional[bool] = None,
         graceful_error_handling: bool = True,
@@ -410,7 +417,7 @@ class AsyncCompletionsWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular python functions as tools.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -452,7 +459,8 @@ class AsyncCompletionsWrapper(ExecutorMixin):
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         user: str | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         full_response: Optional[bool] = None,
         graceful_error_handling: bool = True,
@@ -495,7 +503,7 @@ class AsyncCompletionsWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular python functions as tools.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)
@@ -537,7 +545,8 @@ class AsyncCompletionsWrapper(ExecutorMixin):
         top_p: Optional[float] | NotGiven = NOT_GIVEN,
         user: str | NotGiven = NOT_GIVEN,
         # Toolflow-specific parameters
-        max_tool_calls: Optional[int] = None,
+        max_tool_call_rounds: Optional[int] = None,
+        max_response_format_retries: Optional[int] = None,
         parallel_tool_execution: bool = True,
         full_response: Optional[bool] = None,
         graceful_error_handling: bool = True,
@@ -581,7 +590,7 @@ class AsyncCompletionsWrapper(ExecutorMixin):
             response_format: A pydantic model that the model will output.
                 This is enhanced by toolflow. Just pass your regular python functions as tools.
                 Toolflow will handle the rest.
-            max_tool_calls: Maximum number of tool calls to execute (default: 10)
+            max_tool_call_rounds: Maximum number of tool calls to execute (default: 10)
             parallel_tool_execution: Execute tool calls in parallel (default: True)
             full_response: Return full OpenAI response object instead of content only
             graceful_error_handling: Handle errors gracefully (default: True)

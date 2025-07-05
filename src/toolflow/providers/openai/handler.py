@@ -2,18 +2,9 @@
 from __future__ import annotations
 import json
 from typing import Any, List, Dict, Generator, AsyncGenerator, Union, Optional, Tuple
-try:
-    from openai import OpenAI, AsyncOpenAI
-    from openai.types.chat import ChatCompletion, ChatCompletionChunk
-except ImportError:
-    OpenAI = None
-    AsyncOpenAI = None
-    ChatCompletion = None
-    ChatCompletionChunk = None
+from openai import OpenAI, AsyncOpenAI
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from toolflow.core import TransportAdapter, MessageAdapter, ResponseFormatAdapter
-
-# import future types
-# Handler = Union[TransportAdapter, MessageAdapter]
 
 class OpenAIHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
     def __init__(self, client: Union[OpenAI, AsyncOpenAI], original_create):
@@ -102,10 +93,11 @@ class OpenAIHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         
         return text_content, tool_calls, response
 
-    def check_max_tokens_reached(self, response: ChatCompletion) -> None:
-        """Check if max tokens was reached and raise exception if so."""
+    def check_max_tokens_reached(self, response: ChatCompletion) -> bool:
+        """Check if max tokens was reached and return True if so."""
         if response.choices[0].finish_reason == "length":
-            raise Exception("Max tokens reached without finding a solution")
+            return True
+        return False
 
     def parse_stream_chunk(self, chunk: ChatCompletionChunk) -> Tuple[Optional[str], Optional[List[Dict]], Any]:
         """Parse a streaming chunk into (text, tool_calls, raw_chunk)."""
@@ -165,8 +157,8 @@ class OpenAIHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
                             if tool_call_delta.function.arguments:
                                 accumulated_tool_calls[index]["function"]["arguments"] += tool_call_delta.function.arguments
             
-            # Check if we have complete tool calls
-            elif choice and choice.finish_reason == "tool_calls":
+            # Check if we have complete tool calls (separate from delta processing)
+            if choice and choice.finish_reason == "tool_calls":
                 # Tool calls are complete, parse arguments
                 tool_calls = []
                 for tool_call in accumulated_tool_calls.values():
@@ -220,8 +212,8 @@ class OpenAIHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
                             if tool_call_delta.function.arguments:
                                 accumulated_tool_calls[index]["function"]["arguments"] += tool_call_delta.function.arguments
             
-            # Check if we have complete tool calls
-            elif choice and choice.finish_reason == "tool_calls":
+            # Check if we have complete tool calls (separate from delta processing)
+            if choice and choice.finish_reason == "tool_calls":
                 # Tool calls are complete, parse arguments
                 tool_calls = []
                 for tool_call in accumulated_tool_calls.values():

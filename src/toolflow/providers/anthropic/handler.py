@@ -7,9 +7,6 @@ from anthropic.types import Message, RawMessageStreamEvent
 
 from toolflow.core import TransportAdapter, MessageAdapter, ResponseFormatAdapter
 
-# import future types
-# Handler = Union[TransportAdapter, MessageAdapter, ResponseFormatAdapter]
-
 class AnthropicHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
     def __init__(self, client: Union[Anthropic, AsyncAnthropic], original_create):
         self.client = client
@@ -90,10 +87,11 @@ class AnthropicHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         
         return text_content, tool_calls, response
 
-    def check_max_tokens_reached(self, response: Message) -> None:
+    def check_max_tokens_reached(self, response: Message) -> bool:
         """Check if max tokens was reached and raise exception if so."""
         if response.stop_reason == "max_tokens":
-            raise Exception("Max tokens reached without finding a solution")
+            return True
+        return False
 
     def parse_stream_chunk(self, event: RawMessageStreamEvent) -> Tuple[Optional[str], Optional[List[Dict]], Any]:
         """Parse a streaming event into (text, tool_calls, raw_event)."""

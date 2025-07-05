@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Generator, List, Dict, Tuple, Optional
 from .utils import get_structured_output_tool
-import json
+from .constants import RESPONSE_FORMAT_TOOL_NAME
 
 class TransportAdapter(ABC):
     """
@@ -59,8 +59,8 @@ class TransportAdapter(ABC):
         pass
 
     @abstractmethod
-    def check_max_tokens_reached(self, response: Any) -> None:
-        """Check if max tokens was reached and raise exception if so."""
+    def check_max_tokens_reached(self, response: Any) -> bool:
+        """Check if max tokens was reached and return True if so."""
         pass
 
 
@@ -99,6 +99,13 @@ class MessageAdapter(ABC):
         """Get the tool schema for the tool."""
         from .utils import get_tool_schema
         return get_tool_schema(tool)
+    
+    def build_response_format_retry_message(self) -> Dict[str, Any]:
+        """Build a response format retry message for Anthropic format."""
+        return {
+            "role": "user",
+            "content": f"Call the {RESPONSE_FORMAT_TOOL_NAME} to provide the final response."
+        }
 
     def prepare_tool_schemas(self, tools: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Prepare tool schemas and tool map."""
@@ -138,22 +145,6 @@ class ResponseFormatAdapter(ABC):
     """
     Protocol for handling response format.
     """
-    # Optional methods with default implementations
-    def parse_structured_output(self, tool_call: Dict[str, Any], response_format: Any) -> Any:
-        """Handle the structured output from the tool call."""
-        from pydantic import ValidationError
-        tool_arguments = tool_call["function"]["arguments"]
-        response_data = tool_arguments.get('response', tool_arguments)
-        try:
-            return response_format.model_validate(response_data)
-        except ValidationError:
-            # Re-raise ValidationError as-is for proper error handling
-            raise
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Response parsing failed to get structured output: {e}") from e
-        except Exception as e:
-            raise ValueError(f"Response parsing failed to get structured output: {e}") from e
-
     def prepare_response_format_tool(self, tools: List[Any], response_format: Any) -> Tuple[List[Any], bool]:
         """Get the response format tool schema."""
         if not response_format:

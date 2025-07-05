@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Any, Generator, AsyncGenerator, Union, List, Dict
 import asyncio
 import json
+from pydantic import ValidationError
 from .adapters import TransportAdapter, MessageAdapter, ResponseFormatAdapter
-from .utils import filter_toolflow_params
+from .utils import filter_toolflow_params, process_response_format
 from .constants import RESPONSE_FORMAT_TOOL_NAME
-from .tool_execution import execute_tools, execute_tools_async, MaxToolCallsError
+from .tool_execution import execute_tools, execute_tools_async, run_sync_tool, run_async_tool
+from .exceptions import MaxToolCallsError, ResponseFormatError, MaxTokensError
 
 # ===== GLOBAL ASYNC YIELD FREQUENCY CONFIGURATION =====
 
@@ -32,7 +34,8 @@ def sync_execution_loop(
     """Synchronous execution loop for tool calling."""
 
     (kwargs,
-     max_tool_calls,
+     max_tool_call_rounds,
+     max_response_format_retries,
      parallel_tool_execution,
      full_response,
      graceful_error_handling) = filter_toolflow_params(**kwargs)
@@ -50,44 +53,51 @@ def sync_execution_loop(
         text, _, raw_response = handler.parse_response(response)
         # Check if max tokens was reached
         if hasattr(handler, 'check_max_tokens_reached'):
-            handler.check_max_tokens_reached(response)
+            if handler.check_max_tokens_reached(response):
+                raise MaxTokensError("Max tokens reached without finding a solution")
         return raw_response if full_response else text
     
-    # If we have a response format tool, add it to tools
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
-    tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
     kwargs["tools"] = tool_schemas
-    for _ in range(max_tool_calls):
+    remaining_tool_calls = max_tool_call_rounds
+    remaining_retry_count = max_response_format_retries
+
+    while remaining_tool_calls > 0:
         response = handler.call_api(**kwargs)
         text, tool_calls, raw_response = handler.parse_response(response)
         
         # Check if max tokens was reached
         if hasattr(handler, 'check_max_tokens_reached'):
-            handler.check_max_tokens_reached(response)
-
-        if not tool_calls:
-            # If no tool calls but response_format is specified, try to parse text as JSON
-            if response_format_tool_call_required: 
-                raise ValueError("Response format is specified but model did not return a structured output.")
-            return raw_response if full_response else text
+            if handler.check_max_tokens_reached(response):
+                raise MaxTokensError("Max tokens reached without finding a solution")
         
+        # Handle response format processing
         if response_format_tool_call_required:
-            for tool_call in tool_calls:
-                if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                    # Extract the structured data from the tool call arguments
-                    parsed = handler.parse_structured_output(tool_call, response_format)
-                    return raw_response if full_response else parsed
+            result = process_response_format(
+                handler, raw_response, text, tool_calls, tool_map, messages,
+                remaining_retry_count, max_response_format_retries
+            )
+            if result is not None:
+                structured_response, should_continue = result
+                if should_continue:
+                    continue
+                return raw_response if full_response else structured_response
+        
+        # Handle no tool calls case
+        if not tool_calls:
+            return raw_response if full_response else text
 
         # Add assistant message with tool calls to conversation
         messages.append(handler.build_assistant_message(text, tool_calls, raw_response))
         
         tool_results = execute_tools(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
         messages.extend(handler.build_tool_result_messages(tool_results))
+        remaining_tool_calls -= 1
 
-    if response_format:
-        raise MaxToolCallsError("Max tool calls reached without getting structured output. Try increasing the max_tool_calls parameter.", max_tool_calls)
-    raise MaxToolCallsError("Max tool calls reached before completing the response. Try increasing the max_tool_calls parameter.", max_tool_calls)
+    if response_format_tool_call_required:
+        raise MaxToolCallsError("Max tool calls reached without getting a structured output. Try increasing the max_tool_call_rounds parameter.", max_tool_call_rounds)
+    raise MaxToolCallsError("Max tool calls reached before completing the response. Try increasing the max_tool_call_rounds parameter.", max_tool_call_rounds)
 
 async def async_execution_loop(
     handler: Handler,
@@ -96,14 +106,14 @@ async def async_execution_loop(
     """Asynchronous execution loop for tool calling."""
 
     (kwargs,
-     max_tool_calls,
+     max_tool_call_rounds,
+     max_response_format_retries,
      parallel_tool_execution,
      full_response,
      graceful_error_handling) = filter_toolflow_params(**kwargs)
     
     tools = kwargs.get("tools", [])
-    if "messages" not in kwargs:
-        kwargs["messages"] = []
+    messages = kwargs.get("messages", [])
     
     response_format_tool_call_required = False
     if isinstance(handler, ResponseFormatAdapter):
@@ -115,44 +125,52 @@ async def async_execution_loop(
         text, _, raw_response = handler.parse_response(response)
         # Check if max tokens was reached
         if hasattr(handler, 'check_max_tokens_reached'):
-            handler.check_max_tokens_reached(response)
+            if handler.check_max_tokens_reached(response):
+                raise MaxTokensError("Max tokens reached without finding a solution")
         return raw_response if full_response else text
     
     # If we have a response format tool, add it to tools
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
-    tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
     kwargs["tools"] = tool_schemas
-    for _ in range(max_tool_calls):
+    remaining_tool_calls = max_tool_call_rounds
+    remaining_retry_count = max_response_format_retries
+
+    while remaining_tool_calls > 0:
         response = await handler.call_api_async(**kwargs)
         text, tool_calls, raw_response = handler.parse_response(response)
         
         # Check if max tokens was reached
         if hasattr(handler, 'check_max_tokens_reached'):
-            handler.check_max_tokens_reached(response)
+            if handler.check_max_tokens_reached(response):
+                raise MaxTokensError("Max tokens reached without finding a solution")
 
-        if not tool_calls:
-            # If no tool calls but response_format is specified, try to parse text as JSON
-            if response_format_tool_call_required: 
-                raise ValueError("Response format is specified but model did not return a structured output.")
-            return raw_response if full_response else text
-        
+        # Handle response format processing
         if response_format_tool_call_required:
-            for tool_call in tool_calls:
-                if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                    # Extract the structured data from the tool call arguments
-                    parsed = handler.parse_structured_output(tool_call, response_format)
-                    return raw_response if full_response else parsed
+            result = process_response_format(
+                handler, raw_response, text, tool_calls, tool_map, messages,
+                remaining_retry_count, max_response_format_retries
+            )
+            if result is not None:
+                structured_response, should_continue = result
+                if should_continue:
+                    continue
+                return raw_response if full_response else structured_response
+        
+        # Handle no tool calls case
+        if not tool_calls:
+            return raw_response if full_response else text
             
         # Add assistant message with tool calls to conversation  
         kwargs["messages"].append(handler.build_assistant_message(text, tool_calls, raw_response))
         
         tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling)
         kwargs["messages"].extend(handler.build_tool_result_messages(tool_results))
+        remaining_tool_calls -= 1
 
-    if response_format:
-        raise MaxToolCallsError("Max tool calls reached without getting structured output. Try increasing the max_tool_calls parameter.", max_tool_calls)
-    raise MaxToolCallsError("Max tool calls reached before completing the response. Try increasing the max_tool_calls parameter.", max_tool_calls)
+    if response_format_tool_call_required:
+        raise MaxToolCallsError("Max tool calls reached without getting structured output. Try increasing the max_tool_call_rounds parameter.", max_tool_call_rounds)
+    raise MaxToolCallsError("Max tool calls reached before completing the response. Try increasing the max_tool_call_rounds parameter.", max_tool_call_rounds)
 
 def sync_streaming_execution_loop(
     handler: Handler,
@@ -160,7 +178,8 @@ def sync_streaming_execution_loop(
 ) -> Generator[Any, None, None]:
     """Synchronous streaming execution loop with tool calling support."""
     (kwargs,
-     max_tool_calls,
+     max_tool_call_rounds,
+     max_response_format_retries,
      parallel_tool_execution,
      full_response,
      graceful_error_handling) = filter_toolflow_params(**kwargs)
@@ -178,17 +197,10 @@ def sync_streaming_execution_loop(
                 yield text
         return
     
-    # Prepare tools for tool calling
-    response_format_tool_call_required = False
-    if isinstance(handler, ResponseFormatAdapter):
-        response_format = kwargs.pop("response_format", None)
-        tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
-    
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
-    tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
     
     kwargs["tools"] = tool_schemas
-    remaining_tool_calls = max_tool_calls
+    remaining_tool_calls = max_tool_call_rounds
     
     while remaining_tool_calls > 0:
         # Stream the response
@@ -215,14 +227,7 @@ def sync_streaming_execution_loop(
         
         # Check if we have tool calls to execute
         if accumulated_tool_calls:
-            if response_format_tool_call_required:
-                # Handle structured output
-                for tool_call in accumulated_tool_calls:
-                    if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                        parsed = handler.parse_structured_output(tool_call, response_format)
-                        # For structured output, yield the final parsed result
-                        yield parsed if not full_response else tool_call
-                        return
+            # NOTE: Response format is not supported for streaming yet
             
             # Add assistant message with tool calls to conversation
             # Use None for content if no text was accumulated to preserve context for summarization
@@ -244,7 +249,7 @@ def sync_streaming_execution_loop(
             break
     
     if remaining_tool_calls <= 0:
-        raise MaxToolCallsError("Max tool calls reached without a valid response", max_tool_calls)
+        raise MaxToolCallsError("Max tool calls reached without a valid response", max_tool_call_rounds)
 
 def async_streaming_execution_loop(
     handler: Handler,
@@ -252,7 +257,8 @@ def async_streaming_execution_loop(
 ) -> AsyncGenerator[Any, None]:
     """Asynchronous streaming execution loop with tool calling support."""
     (kwargs,
-     max_tool_calls,
+     max_tool_call_rounds,
+     max_response_format_retries,
      parallel_tool_execution,
      full_response,
      graceful_error_handling) = filter_toolflow_params(**kwargs)
@@ -261,11 +267,6 @@ def async_streaming_execution_loop(
         
         tools = kwargs.get("tools", [])
         messages = kwargs.get("messages", [])
-
-        response_format_tool_call_required = False
-        if isinstance(handler, ResponseFormatAdapter):
-            response_format = kwargs.pop("response_format", None)
-            tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
         
         # If no tools, just do simple streaming
         if not tools:
@@ -285,10 +286,9 @@ def async_streaming_execution_loop(
         
         # Prepare tools for tool calling
         tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
-        tool_map.pop(RESPONSE_FORMAT_TOOL_NAME, None)
         
         kwargs["tools"] = tool_schemas
-        remaining_tool_calls = max_tool_calls
+        remaining_tool_calls = max_tool_call_rounds
         
         while remaining_tool_calls > 0:
             # Stream the response
@@ -323,14 +323,8 @@ def async_streaming_execution_loop(
             
             # Check if we have tool calls to execute
             if accumulated_tool_calls:
-                if response_format_tool_call_required:
-                    # Handle structured output
-                    for tool_call in accumulated_tool_calls:
-                        if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                            parsed = handler.parse_structured_output(tool_call, response_format)
-                            # For structured output, yield the final parsed result
-                            yield parsed if not full_response else tool_call
-                            return
+                # NOTE: Response format is not supported for streaming yet
+
                 
                 # Add assistant message with tool calls to conversation
                 # Use None for content if no text was accumulated to preserve context for summarization
@@ -352,6 +346,6 @@ def async_streaming_execution_loop(
                 break
         
         if remaining_tool_calls <= 0:
-            raise MaxToolCallsError("Max tool calls reached without a valid response", max_tool_calls)
+            raise MaxToolCallsError("Max tool calls reached without a valid response", max_tool_call_rounds)
     
     return internal_generator()
