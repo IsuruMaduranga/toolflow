@@ -2,8 +2,8 @@
 import asyncio
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Callable, Any, Coroutine, Optional, Union, get_origin, get_args
+from concurrent.futures import ThreadPoolExecutor, wait
+from typing import List, Dict, Callable, Any, Coroutine, Optional, Union, get_origin, get_args, Tuple
 import inspect
 from pydantic import BaseModel
 import dataclasses
@@ -35,7 +35,6 @@ def get_max_workers() -> int:
 def set_executor(executor: ThreadPoolExecutor) -> None:
     """Set a custom global executor (used by both sync and async)."""
     global _global_executor
-    global _custom_executor
     with _executor_lock:
         if _global_executor:
             _global_executor.shutdown(wait=True) 
@@ -70,177 +69,138 @@ def _get_async_executor() -> Optional[ThreadPoolExecutor]:
         return _custom_executor
 
 # ===== TOOL EXECUTION FUNCTIONS =====
-
-def execute_tools(
+async def execute_tools_async(
     tool_calls: List[Dict[str, Any]],
     tool_map: Dict[str, Callable[..., Any]],
-    parallel: bool = False,
-    graceful_error_handling: bool = True
+    graceful_error_handling: bool = True,
+    parallel: bool = False
 ) -> List[Dict[str, Any]]:
-    """
-    Executes tool calls synchronously.
-    
-    Args:
-        tool_calls: List of tool calls to execute
-        tool_map: Mapping of tool names to functions
-        parallel: If True, use global thread pool; if False, execute sequentially
-        graceful_error_handling: If True, return error messages; if False, raise exceptions
-    """
-    if not tool_calls:
-        return []
-    
-    if not parallel:
-        # Sequential execution (default for playground use)
-        results = []
+    loop = asyncio.get_running_loop()
+    results = []
+    unknown_tool_results = []
+
+    if parallel:
+        all_tasks = []
         for tool_call in tool_calls:
-            # Ignore response_format tool call
-            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                continue
             tool_name = tool_call["function"]["name"]
-            if tool_name in tool_map:
-                results.append(run_sync_tool(tool_call, tool_map[tool_name], graceful_error_handling))
+            if tool_name == RESPONSE_FORMAT_TOOL_NAME:
+                continue
+            tool_func = tool_map.get(tool_name)
+            if not tool_func:
+                if graceful_error_handling:
+                    unknown_tool_results.append({
+                        "tool_call_id": tool_call["id"],
+                        "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
+                        "is_error": True,
+                    })
+                    continue
+                else:
+                    raise KeyError(f"Unknown tool: {tool_name}")
+
+            if asyncio.iscoroutinefunction(tool_func):
+                coro = run_async_tool(tool_call, tool_func, graceful_error_handling)
             else:
-                # Handle unknown tool
+                coro = loop.run_in_executor(
+                    _get_async_executor(), run_sync_tool, tool_call, tool_func, graceful_error_handling
+                )
+            all_tasks.append(coro)
+
+        gathered = await asyncio.gather(*all_tasks)
+        return list(gathered) + unknown_tool_results
+
+    else:
+        for tool_call in tool_calls:
+            tool_name = tool_call["function"]["name"]
+            if tool_name == RESPONSE_FORMAT_TOOL_NAME:
+                continue
+            tool_func = tool_map.get(tool_name)
+            if not tool_func:
                 if graceful_error_handling:
                     results.append({
                         "tool_call_id": tool_call["id"],
                         "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
                         "is_error": True,
                     })
+                    continue
                 else:
                     raise KeyError(f"Unknown tool: {tool_name}")
-        return results
-    
-    # Parallel execution using global thread pool
-    executor = _get_sync_executor()
-    future_to_tool_call = {}
-    tool_results = []
-    
-    for tool_call in tool_calls:
-        # Ignore response_format tool call
-        if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-            continue
-        tool_name = tool_call["function"]["name"]
-        if tool_name in tool_map:
-            future = executor.submit(
-                run_sync_tool,
-                tool_call,
-                tool_map[tool_name],
-                graceful_error_handling
-            )
-            future_to_tool_call[future] = tool_call
-        else:
-            # Handle unknown tool immediately
-            if graceful_error_handling:
-                tool_results.append({
-                    "tool_call_id": tool_call["id"],
-                    "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
-                    "is_error": True,
-                })
+
+            if asyncio.iscoroutinefunction(tool_func):
+                result = await run_async_tool(tool_call, tool_func, graceful_error_handling)
             else:
-                raise KeyError(f"Unknown tool: {tool_name}")
-    
-    # Collect results from futures
-    for future in future_to_tool_call:
-        tool_results.append(future.result())
-    
-    return tool_results
+                result = await loop.run_in_executor(
+                    _get_async_executor(), run_sync_tool, tool_call, tool_func, graceful_error_handling
+                )
+            results.append(result)
 
+        return results
 
-async def execute_tools_async(
+def execute_tools_sync(
     tool_calls: List[Dict[str, Any]],
     tool_map: Dict[str, Callable[..., Any]],
+    parallel: bool = False,
     graceful_error_handling: bool = True
 ) -> List[Dict[str, Any]]:
-    """
-    Executes tool calls asynchronously, handling both sync and async tools.
-    
-    - Async tools run concurrently using asyncio.gather()
-    - Sync tools run in thread pool:
-        * Uses global executor if set via set_global_executor()
-        * Otherwise uses asyncio's default thread pool
-    - Always executes tools concurrently for optimal async performance
-    
-    Args:
-        tool_calls: List of tool calls to execute
-        tool_map: Mapping of tool names to functions
-        graceful_error_handling: If True, return error messages; if False, raise exceptions
-    """
-    sync_tool_calls = []
-    async_tool_tasks: List[Coroutine[Any, Any, Dict[str, Any]]] = []
+    if not tool_calls:
+        return []
 
-    unknown_tool_results = []
-    
     for tool_call in tool_calls:
-        # Ignore response_format tool call
-        if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-            continue
         tool_name = tool_call["function"]["name"]
+        if tool_name == RESPONSE_FORMAT_TOOL_NAME:
+            continue
         tool_func = tool_map.get(tool_name)
-        if tool_func:
-            if asyncio.iscoroutinefunction(tool_func):
-                async_tool_tasks.append(
-                    run_async_tool(tool_call, tool_func, graceful_error_handling)
-                )
-            else:
-                sync_tool_calls.append(tool_call)
-        else:
-            # Handle unknown tool
-            if graceful_error_handling:
-                unknown_tool_results.append({
-                    "tool_call_id": tool_call["id"],
-                    "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
-                    "is_error": True,
-                })
-            else:
-                raise KeyError(f"Unknown tool: {tool_name}")
-    
-    # Run sync tools using custom executor or asyncio's default
-    sync_results = []
-    if sync_tool_calls:
-        loop = asyncio.get_running_loop()
-        
-        futures = [
-            loop.run_in_executor(
-                _get_async_executor(), # Custom executor or None (asyncio default)
-                run_sync_tool,
-                call,
-                tool_map[call["function"]["name"]],
-                graceful_error_handling
-            )
-            for call in sync_tool_calls
-        ]
-        
-        if graceful_error_handling:
-            sync_results = await asyncio.gather(*futures)
-        else:
-            # When graceful_error_handling=False, preserve original stack traces
-            sync_results = []
-            for future in futures:
-                try:
-                    result = await future
-                    sync_results.append(result)
-                except Exception:
-                    # Re-raise the original exception to preserve stack trace
-                    raise
+        if tool_func and asyncio.iscoroutinefunction(tool_func):
+            raise RuntimeError("Async tools are not supported in sync toolflow execution")
 
-    # Run async tools concurrently
-    async_results = []
-    if async_tool_tasks:
-        if graceful_error_handling:
-            async_results = await asyncio.gather(*async_tool_tasks)
-        else:
-            # When graceful_error_handling=False, preserve original stack traces
-            for task in async_tool_tasks:
-                try:
-                    result = await task
-                    async_results.append(result)
-                except Exception:
-                    # Re-raise the original exception to preserve stack trace
-                    raise
+    results = []
 
-    return sync_results + async_results + unknown_tool_results
+    if parallel:
+        executor = _get_sync_executor()
+        futures = []
 
+        for tool_call in tool_calls:
+            tool_name = tool_call["function"]["name"]
+            if tool_name == RESPONSE_FORMAT_TOOL_NAME:
+                continue
+            tool_func = tool_map.get(tool_name)
+            if not tool_func:
+                if graceful_error_handling:
+                    results.append({
+                        "tool_call_id": tool_call["id"],
+                        "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
+                        "is_error": True,
+                    })
+                    continue
+                else:
+                    raise KeyError(f"Unknown tool: {tool_name}")
+
+            futures.append(executor.submit(run_sync_tool, tool_call, tool_func, graceful_error_handling))
+
+        done, _ = wait(futures)
+        for future in done:
+            results.append(future.result())
+
+    else:
+        for tool_call in tool_calls:
+            tool_name = tool_call["function"]["name"]
+            if tool_name == RESPONSE_FORMAT_TOOL_NAME:
+                continue
+            tool_func = tool_map.get(tool_name)
+            if not tool_func:
+                if graceful_error_handling:
+                    results.append({
+                        "tool_call_id": tool_call["id"],
+                        "output": f"Error: Unknown tool '{tool_name}' - tool not found in available tools",
+                        "is_error": True,
+                    })
+                    continue
+                else:
+                    raise KeyError(f"Unknown tool: {tool_name}")
+
+            result = run_sync_tool(tool_call, tool_func, graceful_error_handling)
+            results.append(result)
+
+    return results
 
 def _prepare_tool_arguments(tool_func: Callable[..., Any], arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
