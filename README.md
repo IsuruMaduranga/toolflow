@@ -1,4 +1,4 @@
-## Toolflow - Add auto tool calling and structured outputs to official LLM SDKs
+## Toolflow - Just wrap any LLM SDK and add auto tool calling and structured outputs
 
 [![PyPI version](https://badge.fury.io/py/toolflow.svg)](https://badge.fury.io/py/toolflow)
 [![Python versions](https://img.shields.io/pypi/pyversions/toolflow.svg)](https://pypi.org/project/toolflow/)
@@ -630,11 +630,10 @@ toolflow.from_anthropic(client, full_response=False) # Wraps any Anthropic clien
 📊 TOOLFLOW CONCURRENCY BEHAVIOR
 
 SYNC OPERATIONS
-├── Default: Sequential execution
-└── parallel_tool_execution=True
-                ├── No custom executor → Global ThreadPoolExecutor (4 workers)
-                ├── Change with toolflow.set_max_workers(workers)
-                └── Change thread pool with toolflow.set_executor(executor)
+├── Default: Parallel execution
+    ├── No custom executor → Global ThreadPoolExecutor (4 workers)
+    ├── Change with toolflow.set_max_workers(workers)
+    └── Change thread pool with toolflow.set_executor(executor)
 
 ASYNC OPERATIONS  
 ├── Default: Parallel by default
@@ -708,7 +707,8 @@ client.chat.completions.create(
     tools=[...],                      # List of functions (any callable)
     response_format=BaseModel,        # Pydantic model for structured output
     parallel_tool_execution=False,    # Enable concurrent tool execution
-    max_tool_calls=10,               # Safety limit for tool rounds
+    max_tool_call_rounds=10,               # Safety limit for tool rounds
+    max_response_format_retries=2,        # Maximum number of retries to get correct structured output from model
     graceful_error_handling=True,    # Handle tool errors gracefully
     full_response=False,             # Return full SDK response vs simplified
 )
