@@ -270,16 +270,23 @@ def run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], grac
         return {"tool_call_id": tool_call["id"], "output": result}
     except Exception as e:
         if graceful_error_handling:
+            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+                return {
+                    "tool_call_id": tool_call["id"],
+                    "output": f"Error parsing response format: {e}. Try again",
+                    "is_error": True,
+                }
             return {
                 "tool_call_id": tool_call["id"],
                 "output": f"Error executing tool {tool_call['function']['name']}: {e}",
                 "is_error": True,
             }
         else:
-            error_msg = f"""Error executing tool {tool_call['function']['name']}: {e}
-            TIP: If this is a data format issue, consider clearly documenting the tool's parameters.
-            """
+            error_msg = f"Error executing tool {tool_call['function']['name']}: {e}"
+            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+                raise e
             raise type(e)(error_msg) from e
+            
 
 async def run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Coroutine[Any, Any, Any]], graceful_error_handling: bool = True) -> Dict[str, Any]:
     try:
@@ -289,13 +296,19 @@ async def run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Cor
         return {"tool_call_id": tool_call["id"], "output": result}
     except Exception as e:
         if graceful_error_handling:
+            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+                return {
+                    "tool_call_id": tool_call["id"],
+                    "output": f"Error parsing response format: {e}. Try again",
+                    "is_error": True,
+                }
             return {
                 "tool_call_id": tool_call["id"],
                 "output": f"Error executing tool {tool_call['function']['name']}: {e}",
                 "is_error": True,
             }
         else:
-            error_msg = f"""Error executing tool {tool_call['function']['name']}: {e}
-            TIP: If this is a data format issue, consider clearly documenting the tool's parameters.
-            """
+            error_msg = f"Error executing tool {tool_call['function']['name']}: {e}"
+            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+                raise e
             raise type(e)(error_msg) from e

@@ -149,6 +149,4 @@ class ResponseFormatAdapter(ABC):
         """Get the response format tool schema."""
         if not response_format:
             return tools, False
-        if isinstance(response_format, type) and hasattr(response_format, 'model_json_schema'):
-            return tools + [get_structured_output_tool(response_format)], True
-        raise ValueError(f"Response format {response_format} is not a Pydantic model")
+        return tools + [get_structured_output_tool(response_format)], True

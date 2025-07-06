@@ -231,6 +231,41 @@ for chunk in stream:
         print(chunk.choices[0].delta.content, end="")
 ```
 
+## Supported Types for Tools and Response Formats
+
+Toolflow can turn almost any modern Python type hint into an OpenAI tool-schema—and then coerce the JSON payload into real Python objects when the tool executes.
+
+| Category | Example Annotations |
+|----------|--------------------|
+| **Primitives** | `str`, `int`, `float`, `bool`, `None` |
+| **Std-lib scalars & formats** | `datetime`, `date`, `time`, `timedelta`, `UUID`, `Decimal`, `Path`, `IPv4Address` |
+| **Sequences / sets** | `list[int]`, `set[UUID]`, `tuple[str, int]`, `tuple[float, …]` |
+| **Mappings** | `dict[str, float]`, `Mapping[str, Any]` |
+| **TypedDict (PEP 589)** | `class User(TypedDict): id: int; name: str` |
+| **Data classes** | `@dataclass class Point: x: float; y: float` |
+| **Pydantic BaseModel** | `class Address(BaseModel): city: str; zip: str` |
+| **Enums & Literals** | `Enum`, `IntEnum`, `StrEnum`, `Literal["A","B"]` |
+| **Union / Optional** | `Union[int, str]`, `Optional[MyModel]` |
+| **Constrained & specialised types** | `conint(gt=0)`, `EmailStr`, `AnyUrl`, `conlist(str, min_items=1)` |
+| **Annotated + Field metadata** | `Annotated[int, Field(gt=0, description="positive")]` |
+| **Recursion & generics** | `class Node(BaseModel): children: list["Node"]` |
+| **NewType / type aliases** | `UserId = NewType("UserId", int)` |
+
+> Everything above is runtime‐validated via **Pydantic v2 `TypeAdapter`**, so you get both a correct schema and real typed objects when the tool runs.
+
+### What *isn’t* supported (raises `UndescribableTypeError`)
+
+| Annotation | Why |
+|------------|-----|
+| `Callable[…]`, functions, lambdas | Executable code isn’t data |
+| Open file handles (`IO`), `socket.socket`, live DB/HTTP sessions | External resources, no JSON form |
+| Arbitrary classes without a Pydantic schema & no `**kwargs` constructor | Pydantic can’t introspect them |
+| Large binary / numeric containers (`numpy.ndarray`, `pandas.DataFrame`, etc.) | No built-in JSON schema |
+
+Missing type hints raise **`MissingAnnotationError`**.
+
+Need set-semantics? Use `set[T]` + an **immutable**/frozen model (or `FrozenSet[T]`). Otherwise prefer `list[T]`.
+
 ## Migration Guide
 
 ### From OpenAI SDK

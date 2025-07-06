@@ -46,9 +46,13 @@ def _initialize_execution_context(handler: Handler, **kwargs: Any):
 def _create_error_message(max_response_format_retries: int, error_message: str) -> str:
     return f"""
     Failed to parse structured output after {max_response_format_retries} retries.
-    TIP: If this is a data format issue, consider clearly documenting the response format parameters.
-    \n
-    {f"Error: {error_message}" if error_message else ""}
+
+    {f"{error_message}" if error_message else ""}
+
+    HINT:
+    - If this is a data format issue, consider clearly documenting the response format parameters.
+    - Or use properly parsable types like Pydantic models, dataclasses, or TypedDicts.
+    
     """
 
 def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
@@ -87,7 +91,7 @@ def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
                 if should_continue:
                     remaining_retry_count -= 1
                     if remaining_retry_count < 0:
-                        raise ResponseFormatError(_create_error_message(max_response_format_retries, result))
+                        raise ResponseFormatError(_create_error_message(max_response_format_retries, result[0]))
                     continue
                 return raw_response if full_response else structured_response
 
@@ -132,7 +136,7 @@ async def async_execution_loop(handler: Handler, **kwargs: Any) -> Any:
                 if should_continue:
                     remaining_retry_count -= 1
                     if remaining_retry_count < 0:
-                        raise ResponseFormatError(_create_error_message(max_response_format_retries, result))
+                        raise ResponseFormatError(_create_error_message(max_response_format_retries, result[0]))
                     continue
                 return raw_response if full_response else structured_response
 

@@ -168,7 +168,7 @@ class TestToolExecution:
         assert messages[1]['role'] == 'assistant'
         assert messages[2]['role'] == 'tool'
         assert messages[2]['tool_call_id'] == 'call_123'
-        assert messages[2]['content'] == '8'  # Result of 5 + 3
+        assert messages[2]['content'] == '8.0'  # Result of 5 + 3 (float precision preserved)
     
     def test_multiple_tool_execution(self, toolflow_openai_client, mock_openai_client):
         """Test execution of multiple tools in sequence."""

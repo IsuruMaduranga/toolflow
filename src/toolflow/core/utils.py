@@ -38,7 +38,7 @@ def get_structured_output_tool(pydantic_model: Any) -> Callable[..., str]:
 
     structured_response_tool.__name__ = RESPONSE_FORMAT_TOOL_NAME
     structured_response_tool.__doc__ = f"""
-        Provide your final structured response using the specified {pydantic_model.__name__} format.
+        Provide your final structured response using this tool.
         WHEN TO USE: Call when ready to provide your complete structured answer.
         CRITICAL REQUIREMENTS:
         ✓ Fill ALL required fields accurately
@@ -51,7 +51,7 @@ def get_structured_output_tool(pydantic_model: Any) -> Callable[..., str]:
         ✓ Simply call with properly formatted data
         
         Args:
-            response: Complete {pydantic_model.__name__} object with all required fields filled out accurately based on the conversation context
+            response: Complete response object with all required fields filled out accurately based on the conversation context
         
         Returns:
             Empty string (the structured data is captured in the function call)

@@ -9,12 +9,17 @@ from toolflow.core import (
     get_max_workers,
     set_executor,
     MaxToolCallsError,
+    MissingAnnotationError,
+    UndescribableTypeError,
+    ResponseFormatError,
+    MaxTokensError,
 )
 from toolflow.core import set_async_yield_frequency
 from toolflow.providers import from_openai, from_anthropic
 from toolflow.core import tool
+from . import errors
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     # Core tool execution configuration
@@ -33,5 +38,5 @@ __all__ = [
     "tool",
     
     # Exceptions
-    "MaxToolCallsError",
+    "errors",
 ]

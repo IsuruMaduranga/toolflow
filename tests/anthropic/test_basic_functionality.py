@@ -171,7 +171,7 @@ class TestToolExecution:
         assert messages[2]['role'] == 'user'
         assert messages[2]['content'][0]['type'] == 'tool_result'
         assert messages[2]['content'][0]['tool_use_id'] == 'toolu_123'
-        assert messages[2]['content'][0]['content'] == '8'  # Result of 5 + 3
+        assert messages[2]['content'][0]['content'] == '8.0'  # Result of 5 + 3 (float precision preserved)
     
     def test_multiple_tool_execution(self, toolflow_anthropic_client, mock_anthropic_client):
         """Test execution of multiple tools in sequence."""
