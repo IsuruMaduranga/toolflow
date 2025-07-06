@@ -5,7 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Connect on LinkedIn](https://img.shields.io/badge/LinkedIn-Isuru%20Wijesiri-blue?logo=linkedin)](https://www.linkedin.com/in/isuruwijesiri/)
 
-**🔗 [GitHub](https://github.com/IsuruMaduranga/toolflow)** • **📘 [Documentation](https://github.com/IsuruMaduranga/toolflow/tree/main/examples)**
+**🔗 [GitHub](https://github.com/IsuruMaduranga/toolflow)** • **📘 [Documentation](https://github.com/IsuruMaduranga/toolflow/tree/main/examples)** • **🔒 [Security Policy](SECURITY.md)**
+
+> **🚀 API Stability Notice**: Toolflow 0.3.x has a **frozen public API surface**. Any further breaking changes will bump to version 0.4.0. The current API is stable and production-ready.
 
 
 Toolflow is a blazing-fast, lightweight drop-in thin wrapper for the OpenAI and Anthropic SDKs — adding automatic parallel tool calling, structured Pydantic outputs, and smart response modes with zero breaking changes. Stop battling bloated tool-calling frameworks. Toolflow supercharges the official SDKs you already use, without sacrificing compatibility or simplicity.
@@ -146,6 +148,7 @@ anthropic_client = toolflow.from_anthropic(Anthropic())
 from pydantic import BaseModel
 from typing import List, Dict
 from enum import Enum
+from simpleeval import simple_eval
 
 class CityRequest(BaseModel):
     cities: List[str]
@@ -190,7 +193,9 @@ def calculate(request: CalculationRequest) -> List[float]:
     """Safely evaluate multiple mathematical expressions with precision control."""
     results = []
     for expr in request.expressions:
-        result = eval(expr.replace("^", "**"))
+        # Replace ^ with ** for exponentiation
+        expr = expr.replace("^", "**")
+        result = simple_eval(expr)
         if request.format_output:
             result = round(result, request.precision)
         results.append(result)
@@ -310,6 +315,7 @@ Toolflow fully supports OpenAI's reasoning models (o4-mini, o3) with `reasoning_
 ```python
 from pydantic import BaseModel
 from typing import List
+from simpleeval import simple_eval
 
 class AnalysisResult(BaseModel):
     solution: str
@@ -317,8 +323,10 @@ class AnalysisResult(BaseModel):
     confidence: float
 
 def calculate(expression: str) -> float:
-    """Safely evaluate mathematical expressions."""
-    return eval(expression.replace("^", "**"))
+    """Safely evaluate mathematical expressions."""    
+    # Replace ^ with ** for exponentiation
+    expression = expression.replace("^", "**")
+    return simple_eval(expression)
 
 class DataStatistics(BaseModel):
     mean: float
@@ -803,14 +811,6 @@ The [OpenAI Responses API](https://learn.microsoft.com/en-us/azure/ai-services/o
 
 **Current workaround:** Toolflow's auto-parallel tool calling and structured outputs provide similar benefits to the Responses API's hosted tools, with the added advantage of full local control over your functions.
 
-## API Reference
-
-### Client Wrappers
-```python
-toolflow.from_openai(client, full_response=False)    # Wraps any OpenAI client
-toolflow.from_anthropic(client, full_response=False) # Wraps any Anthropic client
-```
-
 ### Advanced Concurrency Control
 ```
 📊 TOOLFLOW CONCURRENCY BEHAVIOR
@@ -948,6 +948,56 @@ Created and maintained by [Isuru Wijesiri](https://www.linkedin.com/in/isuruwije
 ## Contributing
 
 Contributions welcome! Please fork, create a feature branch, add tests, and submit a pull request.
+
+## API Stability & Versioning
+
+### Version Policy
+
+Toolflow follows semantic versioning with the following guarantees:
+
+**0.3.x Series (Current)**
+- ✅ **Frozen Public API**: No breaking changes will be made to the public API surface
+- ✅ **Production Ready**: Stable and suitable for production use
+- ✅ **Backward Compatible**: All existing code will continue to work
+- 🔄 **Feature Additions**: New features may be added in minor releases (0.3.1, 0.3.2, etc.)
+
+**0.4.0 and Beyond**
+- ⚠️ **Breaking Changes**: Any future breaking changes will bump to version 0.4.0
+- 📋 **Migration Guide**: Clear migration path will be provided
+- 🔄 **Deprecation Warnings**: Breaking changes will be announced in advance
+
+### Public API Surface
+
+The following APIs are considered stable and will not change in the 0.3.x series:
+
+**Core Functions:**
+```python
+toolflow.from_openai(client)           # OpenAI client wrapper
+toolflow.from_anthropic(client)        # Anthropic client wrapper
+toolflow.set_max_workers(n)            # Thread pool configuration
+toolflow.get_max_workers()             # Get current thread pool size
+toolflow.set_executor(executor)        # Custom executor configuration
+toolflow.set_async_yield_frequency(n)  # Async streaming control
+```
+
+**Parameters:**
+- All standard OpenAI/Anthropic parameters
+- `tools=[...]` - Tool function list
+- `response_format=BaseModel` - Structured output
+- `parallel_tool_execution=True/False` - Concurrency control
+- `max_tool_call_rounds=10` - Safety limit
+- `max_response_format_retries=2` - Retry limit
+- `graceful_error_handling=True/False` - Error handling
+- `full_response=True/False` - Response mode
+
+**Decorators:**
+```python
+@toolflow.tool(name="...", description="...")
+```
+
+### Security Considerations
+
+Toolflow executes all tool functions **locally** on your machine. See our [Security Policy](SECURITY.md) for important security information and best practices.
 
 ## License
 

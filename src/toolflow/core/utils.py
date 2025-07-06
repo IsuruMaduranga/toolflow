@@ -78,10 +78,11 @@ def get_tool_schema(
     """
     # 1. Setup: Get signature, docstring, and prepare for overrides
     sig = inspect.signature(func)
-    docstring = parse(inspect.getdoc(func) or "")
-    doc_params = {p.arg_name: p for p in docstring.params}
+    if not hasattr(func, "_tf_doc"):
+        func._tf_doc = parse(inspect.getdoc(func) or "")
+    doc_params = {p.arg_name: p for p in func._tf_doc.params}
     func_name = name or func.__name__
-    short_and_long_description = (docstring.short_description or "") + (docstring.long_description or "")
+    short_and_long_description = (func._tf_doc.short_description or "") + (func._tf_doc.long_description or "")
     func_description = description or short_and_long_description or inspect.getdoc(func) or func_name
 
     # 2. Unified Loop: Process EVERY parameter to build fields for a single model
