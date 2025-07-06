@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Connect on LinkedIn](https://img.shields.io/badge/LinkedIn-Isuru%20Wijesiri-blue?logo=linkedin)](https://www.linkedin.com/in/isuruwijesiri/)
 
-**🔗 [GitHub](https://github.com/IsuruMaduranga/toolflow)** • **📘 [Examples](https://github.com/IsuruMaduranga/toolflow/tree/main/examples)** • **🔒 [Security](SECURITY.md)**
+**🔗 [GitHub](https://github.com/IsuruMaduranga/toolflow)** • **📘 [Examples](https://github.com/IsuruMaduranga/toolflow/tree/main/examples)** • **🔒 [Security](https://github.com/IsuruMaduranga/toolflow/tree/main/SECURITY.md)**
 
 > **🚀 Stable API**: Version 0.3.x has a frozen public API. Breaking changes will bump to 0.4.0.
 
@@ -446,7 +446,7 @@ python run_live_tests.py
 
 ## Security
 
-Toolflow executes all tool functions **locally** on your machine. See our [Security Policy](SECURITY.md) for important security information and best practices.
+Toolflow executes all tool functions **locally** on your machine. See our [Security Policy](https://github.com/IsuruMaduranga/toolflow/tree/main/SECURITY.md) for important security information and best practices.
 
 ## API Stability
 

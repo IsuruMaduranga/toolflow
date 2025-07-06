@@ -163,7 +163,7 @@ def sync_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Generator[
         for text, _, raw_chunk in handler.accumulate_streaming_response(response):
             if full_response:
                 yield raw_chunk
-            elif text:
+            elif text is not None:
                 yield text
         return
     
@@ -181,11 +181,11 @@ def sync_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Generator[
         accumulated_tool_calls = []
 
         for text, partial_tool_calls, raw_chunk in handler.accumulate_streaming_response(response):
-            if text:
+            if text is not None:
                 accumulated_content += text
             if full_response:
                 yield raw_chunk
-            elif text:
+            elif text is not None:
                 yield text
             if partial_tool_calls:
                 accumulated_tool_calls.extend(partial_tool_calls)
@@ -216,7 +216,10 @@ async def async_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Asy
         chunk_count = 0
         response = await handler.call_api_async(**kwargs)
         async for text, _, raw_chunk in handler.accumulate_streaming_response_async(response):
-            yield raw_chunk if full_response else text
+            if full_response:
+                yield raw_chunk
+            elif text is not None:
+                yield text
             yield_freq = get_async_yield_frequency()
             if yield_freq > 0:
                 chunk_count += 1
@@ -235,11 +238,11 @@ async def async_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Asy
         chunk_count = 0
 
         async for text, partial_tool_calls, raw_chunk in handler.accumulate_streaming_response_async(response):
-            if text:
+            if text is not None:
                 accumulated_content += text
             if full_response:
                 yield raw_chunk
-            elif text:
+            elif text is not None:
                 yield text
             if partial_tool_calls:
                 accumulated_tool_calls.extend(partial_tool_calls)
