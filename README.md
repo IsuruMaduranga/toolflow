@@ -1,4 +1,4 @@
-## Toolflow - Just wrap any LLM SDK and add auto tool calling and structured outputs
+## Toolflow - Just wrap any LLM SDK to add auto tool execution and get structured outputs
 
 [![PyPI version](https://badge.fury.io/py/toolflow.svg)](https://badge.fury.io/py/toolflow)
 [![Python versions](https://img.shields.io/pypi/pyversions/toolflow.svg)](https://pypi.org/project/toolflow/)
@@ -47,6 +47,8 @@ class WeatherRequest(BaseModel):
 def get_weather(request: WeatherRequest) -> List[CityWeather]:
     """Get weather for multiple cities with specific requirements."""
     results = []
+    # Implement your logic here, e.g. call an API, fetch data from a database, etc.
+    # Mock implementation for demonstration purposes
     for city in request.cities:
         results.append(CityWeather(
             city=city, 
@@ -61,7 +63,7 @@ result = client.chat.completions.create(
     messages=[{"role": "user", "content": "Get weather for NYC and London with humidity in Celsius"}],
     tools=[get_weather]
 )
-print(result)  # Direct List[CityWeather] output
+print(result)
 
 # Or get a weather report with structured output
 class WeatherReport(BaseModel):
