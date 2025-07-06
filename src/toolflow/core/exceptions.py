@@ -24,3 +24,9 @@ class ResponseFormatError(Exception):
     """
     def __init__(self, message: str):
         super().__init__(message)
+
+class MissingAnnotationError(TypeError):
+    """Raised when a function parameter lacks a type annotation."""
+
+class UndescribableTypeError(TypeError):
+    """Raised when a parameter's annotation cannot be rendered as JSON‑Schema."""

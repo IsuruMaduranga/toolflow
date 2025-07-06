@@ -1,16 +1,20 @@
 # src/toolflow/core/utils.py
-from typing import Dict, Any, Tuple, Callable, get_origin, get_args, Optional, List
+import dataclasses
+from typing import Dict, Any, Tuple, Callable, get_origin, get_args, Optional, List, Union, Set
 from typing_extensions import Annotated
+from pydantic import TypeAdapter
 from .constants import DEFAULT_PARAMS, RESPONSE_FORMAT_TOOL_NAME
-from .exceptions import ResponseFormatError
+from .exceptions import ResponseFormatError, MissingAnnotationError, UndescribableTypeError
 from .tool_execution import run_sync_tool
 import inspect
+from pydantic import BaseModel, create_model, Field, ValidationError
+from pydantic.errors import PydanticSchemaGenerationError
+from pydantic.fields import FieldInfo
+from docstring_parser import parse
 
 __all__ = ['filter_toolflow_params', 'get_structured_output_tool', 'get_tool_schema', 'RESPONSE_FORMAT_TOOL_NAME']
 
-from pydantic import BaseModel, create_model, Field
-from pydantic.fields import FieldInfo
-from docstring_parser import parse
+
 
 def filter_toolflow_params(**kwargs: Any) -> Tuple[Dict[str, Any], int, bool, Any, bool, bool]:
     """Extract toolflow-specific params and return as easily unpackable tuple."""
@@ -55,99 +59,158 @@ def get_structured_output_tool(pydantic_model: Any) -> Callable[..., str]:
     setattr(structured_response_tool, "__internal_tool__", True)
     return structured_response_tool
 
+def _is_optional(tp: Any) -> bool:
+    """Return *True* if ``tp`` is Optional/Union[..., None]."""
+    origin = get_origin(tp)
+    return origin is Union and type(None) in get_args(tp)
+
+def _ensure_pydantic_dataclass(dc: type) -> type:
+    """Wrap a *dataclass* with **pydantic.dataclasses.dataclass** if needed."""
+    if hasattr(dc, "__pydantic_validator__"):
+        # Already wrapped
+        return dc
+    try:
+        from pydantic.dataclasses import dataclass as pydantic_dc
+
+        return pydantic_dc(dc)  # type: ignore[arg-type]
+    except Exception:  # pragma: no cover – fallback, treat as Any
+        return Any  # noqa: ANN401
+
+def _schema_from_type(tp: Any) -> Dict[str, Any]:
+    """Return a JSON‑schema fragment for *tp* using Pydantic *TypeAdapter*."""
+    try:
+        # Pydantic handles Enum, Literal, BaseModel, TypedDict, etc.
+        ta = TypeAdapter(tp)
+        return ta.json_schema()
+    except Exception:  # pragma: no cover – fallback mapping
+        origin = get_origin(tp)
+        if origin in (list, List, set, Set, tuple, Tuple):
+            return {"type": "array"}
+        if origin in (dict, Dict):
+            return {"type": "object"}
+        # Primitive fallbacks
+        if tp in (str,):
+            return {"type": "string"}
+        if tp in (int,):
+            return {"type": "integer"}
+        if tp in (float,):
+            return {"type": "number"}
+        if tp in (bool,):
+            return {"type": "boolean"}
+        # Last resort
+        return {"type": "object"}
+    
+def _assert_describable(tp: Any, param_name: str, func_name: str) -> None:  # noqa: ANN401
+    """Raise *UndescribableTypeError* if ``tp`` can't become JSON‑Schema."""
+
+    try:
+        TypeAdapter(tp).json_schema()
+    except (PydanticSchemaGenerationError, ValidationError, TypeError, ValueError) as exc:  # noqa: E501
+        raise UndescribableTypeError(
+            f"Parameter '{param_name}' of function '{func_name}' uses type "
+            f"{tp!r} which Pydantic cannot render as JSON Schema. "
+            "Consider replacing it with a BaseModel, dataclass, TypedDict, "
+            "primitive, or another describable container – or implement "
+            "__get_pydantic_core_schema__."
+        ) from exc
+
 def get_tool_schema(
     func: Callable[..., Any],
     name: Optional[str] = None,
     description: Optional[str] = None,
-    strict: bool = False
+    *,
+    strict: bool = False,
 ) -> Dict[str, Any]:
+    """Generate an OpenAI‑compatible *function‑tool* schema for *func*.
+
+    Raises
+    ------
+    MissingAnnotationError
+        If any parameter lacks a type annotation.
+    UndescribableTypeError
+        If any annotation cannot be transformed into JSON‑Schema by Pydantic.
     """
-    Generates a truly unified OpenAI-compatible JSON schema from any Python function.
 
-    This function processes every parameter in a single pass, correctly combining
-    Pydantic BaseModel arguments, Annotated[..., Field] parameters, and standard
-    parameters with docstring descriptions into one coherent schema.
-
-    Args:
-        func: The function to generate a schema for.
-        name: An optional override for the function's name.
-        description: An optional override for the function's description.
-
-    Returns:
-        A dictionary representing the OpenAI-compatible function schema.
-    """
-    # 1. Setup: Get signature, docstring, and prepare for overrides
+    # -------------------------------------------------- signature & docstring
     sig = inspect.signature(func)
     if not hasattr(func, "_tf_doc"):
-        func._tf_doc = parse(inspect.getdoc(func) or "")
+        func._tf_doc = parse(inspect.getdoc(func) or "")  # type: ignore[attr-defined]
     doc_params = {p.arg_name: p for p in func._tf_doc.params}
-    func_name = name or func.__name__
-    short_and_long_description = (func._tf_doc.short_description or "") + (func._tf_doc.long_description or "")
-    func_description = description or short_and_long_description or inspect.getdoc(func) or func_name
 
-    # 2. Unified Loop: Process EVERY parameter to build fields for a single model
-    fields_for_model = {}
+    func_name = name or func.__name__
+    merged_doc_descr = (
+        (func._tf_doc.short_description or "") + (func._tf_doc.long_description or "")
+    ).strip()
+    func_description = description or merged_doc_descr or func_name
+
+    # -------------------------------------------------- collect field specs
+    fields_for_model: Dict[str, tuple[Any, FieldInfo]] = {}
+
     for param in sig.parameters.values():
-        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+        # *args / **kwargs are not representable in OpenAI tool schemas
+        if param.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        ):
             continue
 
-        param_name = param.name
-        param_annotation = param.annotation
+        pname = param.name
 
-        # Case A: The parameter is a Pydantic BaseModel.
-        # It will be treated as a nested object in the schema.
-        if inspect.isclass(param_annotation) and issubclass(param_annotation, BaseModel):
-            # The field should be required if it has no default value
-            is_required = param.default is inspect.Parameter.empty
-            field_info = Field(default=... if is_required else param.default)
-            if param_name in doc_params:
-                field_info.description = doc_params[param_name].description
-            fields_for_model[param_name] = (param_annotation, field_info)
-            continue # Done with this param, move to the next
+        if param.annotation is inspect.Parameter.empty:
+            raise MissingAnnotationError(
+                f"Missing type annotation for parameter '{pname}' in function "
+                f"'{func.__name__}'. All tool parameters must be type‑annotated."
+            )
 
-        # Case B: The parameter is a standard type (potentially with Annotated/Field)
-        field_info = Field()  # Start with a blank FieldInfo
-        param_type = param_annotation
+        ptype = param.annotation
+        pdefault = param.default if param.default is not inspect.Parameter.empty else ...
 
-        if get_origin(param_annotation) is Annotated:
-            annotated_args = get_args(param_annotation)
-            param_type = annotated_args[0]
-            field_info = next((arg for arg in annotated_args[1:] if isinstance(arg, FieldInfo)), field_info)
+        # Annotated[…, Field(...)] – split metadata out
+        field_info = Field()
+        if get_origin(ptype) is Annotated:  # type: ignore[attr-defined]
+            root, *extras = get_args(ptype)
+            ptype = root
+            field_info = next(
+                (meta for meta in extras if isinstance(meta, FieldInfo)), field_info
+            )
 
-        if param_type is inspect.Parameter.empty:
-            param_type = Any
+        # Wrap plain dataclasses for Pydantic compatibility
+        if dataclasses.is_dataclass(ptype) and not issubclass(ptype, BaseModel):
+            ptype = _ensure_pydantic_dataclass(ptype)
 
-        # Combine metadata: Field description > docstring description
-        if not field_info.description and param_name in doc_params:
-            field_info.description = doc_params[param_name].description
+        # Ensure describable (raises if not)
+        _assert_describable(ptype, pname, func_name)
 
-        # Set default value from the function signature if not already on the Field
-        if param.default is not inspect.Parameter.empty:
-            field_info.default = param.default
-        
-        fields_for_model[param_name] = (param_type, field_info)
+        # Use docstring description if Field.description absent
+        if not field_info.description and pname in doc_params:
+            field_info.description = doc_params[pname].description
 
-    # 3. Create a single model from all collected fields and generate the schema
-    schema: Dict[str, Any]
+        # Default → optional unless overridden in Field
+        if pdefault is not ... and field_info.default is ...:
+            field_info.default = pdefault
+
+        fields_for_model[pname] = (ptype, field_info)
+
+    # -------------------------------------------------- Build synthetic model
     if not fields_for_model:
-        schema = {"type": "object", "properties": {}, "required": []}
+        parameters_schema: Dict[str, Any] = {"type": "object", "properties": {}, "required": []}
     else:
-        final_model = create_model(f"{func.__name__}Args", **fields_for_model)
-        schema = final_model.model_json_schema()
-        schema.pop("title", None)
-    
-    # Always set additionalProperties to False for OpenAI compatibility
-    schema["additionalProperties"] = False
+        DynamicModel = create_model(f"{func.__name__}Args", **fields_for_model)
+        parameters_schema = DynamicModel.model_json_schema()  # type: ignore[attr-defined]
+        parameters_schema.pop("title", None)
 
-    # 4. Construct the final OpenAI tool schema
+    # OpenAI guideline: forbid additional keys at top level
+    parameters_schema["additionalProperties"] = False
+
+    # -------------------------------------------------- Return final schema
     return {
         "type": "function",
         "function": {
             "name": func_name,
-            "description": func_description,
-            "parameters": schema,
-            "strict": strict
-        }
+            "description": func_description.strip(),
+            "parameters": parameters_schema,
+            "strict": strict,
+        },
     }
 
 def process_response_format(
@@ -174,16 +237,21 @@ def process_response_format(
     
     def _handle_response_format_tool_call(tool_call: Dict[str, Any]) -> Tuple[Any, bool]:
         """Handle a single response format tool call."""
-        tool_result = run_sync_tool(tool_call, tool_map[tool_call["function"]["name"]], True)
-        
-        if tool_result.get("is_error", False):
+        try:
+            tool_result = run_sync_tool(tool_call, tool_map[tool_call["function"]["name"]], False)  # Don't use graceful error handling for structured output
+            
+            # Success - return the structured response
+            return tool_result["output"], False
+        except Exception as e:
             # Add error context and retry
+            error_result = {
+                "tool_call_id": tool_call["id"],
+                "output": f"Error executing structured output tool: {e}",
+                "is_error": True,
+            }
             messages.append(handler.build_assistant_message(text, [tool_call], raw_response))
-            messages.extend(handler.build_tool_result_messages([tool_result]))
-            return tool_result['output'], True
-        
-        # Success - return the structured response
-        return tool_result["output"], False
+            messages.extend(handler.build_tool_result_messages([error_result]))
+            return str(e), True
     
     def _find_response_format_tool_call() -> Optional[Dict[str, Any]]:
         """Find the response format tool call if it exists."""
@@ -202,4 +270,3 @@ def process_response_format(
     
     # No response format tool call found - let normal execution continue
     return None
-    

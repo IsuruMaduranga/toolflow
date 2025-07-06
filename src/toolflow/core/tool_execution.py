@@ -3,13 +3,10 @@ import asyncio
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import List, Dict, Callable, Any, Coroutine, Optional, Union, get_origin, get_args, Tuple
+from typing import List, Dict, Callable, Any, Coroutine, Optional, Union, get_origin, get_args, Tuple, get_type_hints
 import inspect
-from pydantic import BaseModel
-import dataclasses
-from enum import Enum
+from pydantic import TypeAdapter
 from .constants import RESPONSE_FORMAT_TOOL_NAME
-from .exceptions import MaxToolCallsError
 
 # ===== GLOBAL EXECUTOR (SHARED BY SYNC AND ASYNC) =====
 
@@ -207,14 +204,7 @@ def _prepare_tool_arguments(tool_func: Callable[..., Any], arguments: Dict[str, 
     """
     Prepare function arguments by converting JSON-like values to proper Python types.
     
-    This handles conversion of:
-    - Pydantic models: dict -> model.model_validate(dict)
-    - Dataclasses: dict -> dataclass(**dict)
-    - Enums: str/int -> enum member
-    - Collections: recursive conversion of elements
-    - Optional types: handle None and wrapped type
-    - Generic types: List[T], Dict[K,V] with element conversion
-    - Custom classes: dict -> class instance (if accepts **kwargs)
+    Uses Pydantic v2 TypeAdapter to validate and coerce arguments into the expected types.
     
     Args:
         tool_func: The tool function to inspect
@@ -227,159 +217,50 @@ def _prepare_tool_arguments(tool_func: Callable[..., Any], arguments: Dict[str, 
         Exception: If argument conversion fails (validation errors are not suppressed)
     """
     sig = inspect.signature(tool_func)
+    type_hints = get_type_hints(tool_func, include_extras=True)  # include Annotated[] info
     prepared_args = {}
-    
+
     for param_name, param in sig.parameters.items():
         if param_name in arguments:
-            param_annotation = param.annotation
+            param_annotation = type_hints.get(param_name, param.annotation)
             arg_value = arguments[param_name]
-            
-            # Always convert arguments and let validation errors bubble up
-            # This allows the model to see validation errors and retry with corrected data
+
             converted_value = _convert_argument_type(param_annotation, arg_value)
             prepared_args[param_name] = converted_value
-        # Note: We don't add missing arguments - let the function handle defaults/required params
-    
+
+        elif param.default is not inspect.Parameter.empty:
+            # Optional: include defaults for missing args
+            prepared_args[param_name] = param.default
+
+        # else: skip missing required args – let function raise error
+
     return prepared_args
 
-def _convert_argument_type(target_type: Any, value: Any) -> Any:
+
+def _convert_argument_type(annotation: Any, value: Any) -> Any:
     """
-    Convert a value to the target type.
+    Convert JSON-like `value` into `annotation` using Pydantic v2's TypeAdapter.
     
     Args:
-        target_type: The target type annotation
+        annotation: The type hint to validate against
         value: The value to convert
         
     Returns:
-        Converted value
+        Converted and validated value
         
     Raises:
-        Exception: If conversion fails
+        ValueError: If conversion fails
     """
-    # If no type annotation or Any, return as-is
-    if target_type is inspect.Parameter.empty or target_type is Any:
-        return value
-    
-    # Handle Union types (including Optional which is Union[T, None]) first
-    origin = get_origin(target_type)
-    if origin is Union:
-        union_args = get_args(target_type)
-        
-        # Handle Optional[T] (which is Union[T, None])
-        if len(union_args) == 2 and type(None) in union_args:
-            if value is None:
-                return None
-            # Try to convert to the non-None type
-            non_none_type = next(arg for arg in union_args if arg is not type(None))
-            return _convert_argument_type(non_none_type, value)
-        
-        # Try each type in the union until one works
-        for union_type in union_args:
-            try:
-                return _convert_argument_type(union_type, value)
-            except Exception:
-                continue
-        # If none worked, raise exception
-        raise ValueError(f"Could not convert {value} to any type in Union {union_args}")
-    
-    # Handle generic types (List, Dict, etc.) before isinstance checks
-    if origin is not None:
-        return _convert_generic_type(target_type, value)
-    
-    # Now we can safely do isinstance checks for non-generic types
-    # If value is already the correct type, return as-is
-    try:
-        if isinstance(value, target_type):
-            return value
-    except TypeError:
-        # If isinstance fails (e.g., with some special types), continue with conversion
-        pass
-    
-    # Handle specific types
-    if inspect.isclass(target_type):
-        # Pydantic BaseModel
-        if issubclass(target_type, BaseModel) and isinstance(value, dict):
-            return target_type.model_validate(value)
-        
-        # Dataclass
-        if dataclasses.is_dataclass(target_type) and isinstance(value, dict):
-            return target_type(**value)
-        
-        # Enum
-        if issubclass(target_type, Enum):
-            if isinstance(value, str):
-                # Try by value first, then by name
-                try:
-                    return target_type(value)
-                except ValueError:
-                    return target_type[value]
-            elif isinstance(value, (int, float)):
-                return target_type(value)
-        
-        # NamedTuple
-        if hasattr(target_type, '_fields') and isinstance(value, dict):
-            # This is likely a NamedTuple
-            return target_type(**value)
-        
-        # Custom class - try to instantiate with dict as kwargs
-        if isinstance(value, dict):
-            try:
-                return target_type(**value)
-            except Exception:
-                pass
-    
-    # If we can't convert, return the original value
-    return value
+    if annotation is Any:
+        return value  # Any type → pass through
 
-def _convert_generic_type(target_type: Any, value: Any) -> Any:
-    """Convert values for generic types like List[T], Dict[K,V], etc."""
-    origin = get_origin(target_type)
-    args = get_args(target_type)
-    
-    # List[T]
-    if origin is list and isinstance(value, list):
-        if args:  # If type args provided
-            element_type = args[0]
-            return [_convert_argument_type(element_type, item) for item in value]
-        return value
-    
-    # Dict[K, V]  
-    if origin is dict and isinstance(value, dict):
-        if len(args) >= 2:  # If key and value types provided
-            key_type, value_type = args[0], args[1]
-            return {
-                _convert_argument_type(key_type, k): _convert_argument_type(value_type, v)
-                for k, v in value.items()
-            }
-        return value
-    
-    # Tuple[T, ...] or Tuple[T1, T2, ...]
-    if origin is tuple and isinstance(value, (list, tuple)):
-        if args:
-            # Handle Tuple[T, ...] (variable length)
-            if len(args) == 2 and args[1] is Ellipsis:
-                element_type = args[0]
-                return tuple(_convert_argument_type(element_type, item) for item in value)
-            # Handle Tuple[T1, T2, ...] (fixed length)
-            else:
-                converted_items = []
-                for i, item in enumerate(value):
-                    if i < len(args):
-                        converted_items.append(_convert_argument_type(args[i], item))
-                    else:
-                        converted_items.append(item)
-                return tuple(converted_items)
-        return tuple(value)
-    
-    # Set[T]
-    if origin is set and isinstance(value, (list, set)):
-        if args:
-            element_type = args[0]
-            return {_convert_argument_type(element_type, item) for item in value}
-        return set(value)
-    
-    # If we can't handle this generic type, return as-is
-    return value
+    try:
+        adapter = TypeAdapter(annotation)
+        return adapter.validate_python(value)
+    except Exception as e:
+        raise ValueError(
+            f"Failed to convert value {value!r} to type {annotation}: {e}"
+        ) from e
 
 def run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], graceful_error_handling: bool = True) -> Dict[str, Any]:
     try:

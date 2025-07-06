@@ -174,7 +174,7 @@ class TestFilterToolflowParams:
         
         # Should use defaults from DEFAULT_PARAMS
         assert max_tool_call_rounds == 10  # From constants
-        assert parallel_tool_execution is False  # From constants
+        assert parallel_tool_execution is True  # From constants
         assert full_response is False
         assert graceful_error_handling is True
 
