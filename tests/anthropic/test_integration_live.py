@@ -1015,7 +1015,7 @@ class TestAnthropicStructuredOutput:
     def test_structured_output_error_handling(self, client):
         """Test structured output error handling with invalid response format."""
         # Test with invalid response format
-        with pytest.raises(ValueError, match="Response format .* is not a Pydantic model"):
+        with pytest.raises(toolflow.errors.ResponseFormatError):
             client.messages.create(
                 model="claude-3-sonnet-20240229",
                 messages=[{"role": "user", "content": "Hello"}],

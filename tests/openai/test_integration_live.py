@@ -811,7 +811,7 @@ class TestOpenAIStructuredOutput:
     def test_structured_output_error_handling(self, client):
         """Test structured output error handling with invalid response format."""
         # Test with invalid response format
-        with pytest.raises(ValueError, match="Response format .* is not a Pydantic model"):
+        with pytest.raises(toolflow.errors.ResponseFormatError):
             client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "Hello"}],

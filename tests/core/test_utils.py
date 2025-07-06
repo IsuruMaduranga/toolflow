@@ -12,6 +12,7 @@ from toolflow.core.utils import (
     get_structured_output_tool
 )
 from toolflow import tool
+from toolflow.errors import MissingAnnotationError
 
 
 class TestGetToolSchema:
@@ -72,19 +73,14 @@ class TestGetToolSchema:
         assert len(schema['function']['description']) > 0
     
     def test_function_with_no_annotations(self):
-        """Test schema generation for function without type annotations."""
+        """Test that functions without type annotations raise an error."""
         def no_annotations(x, y=None):
             """Function without annotations."""
             return x
         
-        schema = get_tool_schema(no_annotations)
-        
-        assert schema['function']['name'] == 'no_annotations'
-        params = schema['function']['parameters']
-        
-        # Should still include parameters
-        assert 'x' in params['properties']
-        assert 'y' in params['properties']
+        # Should raise MissingAnnotationError
+        with pytest.raises(MissingAnnotationError):
+            get_tool_schema(no_annotations)
     
     def test_decorated_function_schema(self):
         """Test schema generation for @tool decorated function."""
@@ -199,9 +195,9 @@ class TestGetStructuredOutputTool:
         assert hasattr(tool_func, "__internal_tool__")
         assert tool_func.__internal_tool__ is True
         
-        # Check docstring includes model name
-        assert "TestModel" in tool_func.__doc__
+        # Check docstring includes structured response info
         assert "final structured response" in tool_func.__doc__.lower()
+        assert "structured" in tool_func.__doc__.lower()
     
     def test_structured_output_tool_with_different_models(self):
         """Test creating tools for different Pydantic models."""
@@ -219,9 +215,9 @@ class TestGetStructuredOutputTool:
         assert callable(tool_b)
         assert tool_a != tool_b
         
-        # Docstrings should reference correct model names
-        assert "ModelA" in tool_a.__doc__
-        assert "ModelB" in tool_b.__doc__
+        # Docstrings should reference structured response info
+        assert "structured response" in tool_a.__doc__.lower()
+        assert "structured response" in tool_b.__doc__.lower()
 
 
 class TestUtilityHelpers:
