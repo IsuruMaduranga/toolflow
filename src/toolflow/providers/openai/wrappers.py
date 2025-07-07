@@ -4,11 +4,7 @@ from __future__ import annotations
 
 from typing import Any, List, Dict, overload, Iterable, AsyncIterable, Optional, Union, TypeVar
 from typing_extensions import Literal
-try:
-    from collections.abc import AsyncContextManager
-except ImportError:
-    # Fallback for Python < 3.11
-    from typing import AsyncContextManager
+from typing import AsyncContextManager
 
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk

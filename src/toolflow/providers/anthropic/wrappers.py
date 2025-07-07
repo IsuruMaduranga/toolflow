@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, List, Dict, overload, Iterable, AsyncIterable, Optional
 from typing_extensions import Literal
+from typing import AsyncContextManager
+
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import Message, RawMessageStreamEvent
 
@@ -23,6 +25,34 @@ class AnthropicWrapper:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client) + super().__dir__()))
+    
+    @property
+    def raw(self) -> Anthropic:
+        """Access the underlying Anthropic client for debugging or advanced use."""
+        return self._client
+    
+    def unwrap(self) -> Anthropic:
+        return self._client
+    
+    def __enter__(self) -> AnthropicWrapper:
+        self._client.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self._client.__exit__(exc_type, exc_val, exc_tb)
+    
+    def __repr__(self) -> str:
+        return (
+            f"<AnthropicWrapper client={self._client.__class__.__name__} "
+            f"full_response={self.full_response}>"
+        )
+
+    def __str__(self) -> str:
+        return f"Toolflow Anthropic client [sync, full_response={self.full_response}]"
 
 class MessagesWrapper(ExecutorMixin):
     def __init__(self, client: Anthropic, full_response: bool = False):
@@ -243,10 +273,14 @@ class MessagesWrapper(ExecutorMixin):
     
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client.messages) + super().__dir__()))
 
 # --- Asynchronous Wrappers ---
 
-class AsyncAnthropicWrapper:
+class AsyncAnthropicWrapper(AsyncContextManager):
     """Wrapped AsyncAnthropic client that transparently adds toolflow capabilities."""
     def __init__(self, client: AsyncAnthropic, full_response: bool = False):
         self._client = client
@@ -255,6 +289,36 @@ class AsyncAnthropicWrapper:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client) + super().__dir__()))
+    
+    @property
+    def raw(self) -> AsyncAnthropic:
+        """Access the underlying AsyncAnthropic client for debugging or advanced use."""
+        return self._client
+    
+    def unwrap(self) -> AsyncAnthropic:
+        return self._client
+    
+    async def __aenter__(self) -> AsyncAnthropicWrapper:
+        """Support async context management."""
+        await self._client.__aenter__()
+        return self
+    
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        """Support async context management."""
+        return await self._client.__aexit__(exc_type, exc_val, exc_tb)
+    
+    def __repr__(self) -> str:
+        return (
+            f"<AsyncAnthropicWrapper client={self._client.__class__.__name__} "
+            f"full_response={self.full_response}>"
+        )
+    
+    def __str__(self) -> str:
+        return f"Toolflow Anthropic client [async, full_response={self.full_response}]"
 
 class AsyncMessagesWrapper(ExecutorMixin):
     def __init__(self, client: AsyncAnthropic, full_response: bool = False):
@@ -473,3 +537,7 @@ class AsyncMessagesWrapper(ExecutorMixin):
     
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client.messages) + super().__dir__()))

@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Generator, List, Dict, Tuple, Optional
 from .utils import get_structured_output_tool, extract_toolkit_methods, _get_cached_toolkit_schema, _cache_toolkit_schema
 from .constants import RESPONSE_FORMAT_TOOL_NAME
+from .protocols import BaseToolKit, BaseAsyncToolKit
 
 class TransportAdapter(ABC):
     """
@@ -116,8 +117,33 @@ class MessageAdapter(ABC):
 
         if tools:
             for tool in tools:
-                # Check if tool is a ToolKit instance (class instance with methods)
-                # Must not be a built-in type, class, function, or builtin
+                # Check if tool implements SupportsToolKit protocol (MCP toolkits, etc.)
+                if isinstance(tool, BaseToolKit):
+                    # Handle SupportsToolKit protocol
+                    for schema in tool.list_tools():
+                        tool_name = schema["function"]["name"]
+                        
+                        # check if the tool is the response format tool and it is not an internal tool
+                        if tool_name == RESPONSE_FORMAT_TOOL_NAME:
+                            raise ValueError(f"You cannot use the {RESPONSE_FORMAT_TOOL_NAME} as a tool. It is used internally to format the response.")
+                        
+                        tool_schemas.append(schema)
+                        # Create a lambda that captures the tool and tool name
+                        tool_map[tool_name] = lambda args, t=tool, n=tool_name: t.call_tool(n, args)
+                    continue
+
+                # check if tool is an async toolkit
+                if isinstance(tool, BaseAsyncToolKit):
+                    for schema in tool.list_tools():
+                        tool_name = schema["function"]["name"]
+                        tool_schemas.append(schema)
+                        async def call_tool_async(args, t=tool, n=tool_name):
+                            return await t.call_tool(n, args)
+                        tool_map[tool_name] = call_tool_async
+                    continue
+
+                # check if tool is a ToolKit instance (class instance with methods)
+                # must not be a built-in type, class, function, or builtin
                 if (hasattr(tool, '__class__') and 
                     not inspect.isclass(tool) and 
                     not callable(tool) and 

@@ -7,6 +7,7 @@ from .utils import filter_toolflow_params, process_response_format
 from .constants import RESPONSE_FORMAT_TOOL_NAME
 from .tool_execution import execute_tools_sync, execute_tools_async
 from .exceptions import MaxToolCallsError, MaxTokensError, ResponseFormatError
+from .protocols import BaseToolKit, BaseAsyncToolKit
 
 Handler = Union[TransportAdapter, MessageAdapter, ResponseFormatAdapter]
 
@@ -73,6 +74,9 @@ def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
     for tool in tools:
         if asyncio.iscoroutinefunction(tool):
             raise RuntimeError("Async tools are not supported in sync toolflow execution")
+        # Check for async-only toolkits (like MCP toolkits)
+        if isinstance(tool, BaseAsyncToolKit):
+            raise RuntimeError("Some tools require async execution (e.g., MCP ToolKit). Use an async client.")
 
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     kwargs["tools"] = tool_schemas
@@ -170,6 +174,9 @@ def sync_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Generator[
     for tool in tools:
         if asyncio.iscoroutinefunction(tool):
             raise RuntimeError("Async tools are not supported in sync streaming execution")
+        # Check for async-only toolkits (like MCP toolkits)
+        if isinstance(tool, BaseAsyncToolKit):
+            raise RuntimeError("Some tools require async execution (e.g., MCP ToolKit). Use an async client.")
 
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     kwargs["tools"] = tool_schemas
