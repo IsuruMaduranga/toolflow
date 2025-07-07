@@ -1,7 +1,7 @@
 import inspect
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Generator, List, Dict, Tuple, Optional
-from .utils import get_structured_output_tool, extract_toolkit_methods
+from .utils import get_structured_output_tool, extract_toolkit_methods, _get_cached_toolkit_schema, _cache_toolkit_schema
 from .constants import RESPONSE_FORMAT_TOOL_NAME
 
 class TransportAdapter(ABC):
@@ -129,17 +129,16 @@ class MessageAdapter(ABC):
                         methods = extract_toolkit_methods(tool)
                         for method in methods:
                             # Process each method as a tool
-                            # Note: Don't cache metadata on bound methods since they're read-only
-                            try:
-                                schema = method._tool_metadata
-                            except AttributeError:
+                            # Use cache for ToolKit methods since schema generation is expensive
+                            method_name = method.__name__
+                            cached_schema = _get_cached_toolkit_schema(tool, method_name)
+                            
+                            if cached_schema:
+                                schema = cached_schema
+                            else:
+                                # Generate schema and cache it
                                 schema = self.get_tool_schema(method)
-                                # Don't try to cache on bound methods - they don't support attribute assignment
-                                try:
-                                    method._tool_metadata = schema
-                                except (AttributeError, TypeError):
-                                    # Bound methods don't support attribute assignment, skip caching
-                                    pass
+                                _cache_toolkit_schema(tool, method_name, schema)
 
                             # check if the tool is the response format tool and it is not an internal tool
                             if schema["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME and not hasattr(method, "__internal_tool__"):

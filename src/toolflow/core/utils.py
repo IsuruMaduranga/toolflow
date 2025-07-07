@@ -12,7 +12,34 @@ from pydantic.errors import PydanticSchemaGenerationError
 from pydantic.fields import FieldInfo
 from docstring_parser import parse
 
-__all__ = ['filter_toolflow_params', 'get_structured_output_tool', 'get_tool_schema', 'extract_toolkit_methods', 'RESPONSE_FORMAT_TOOL_NAME']
+__all__ = ['filter_toolflow_params', 'get_structured_output_tool', 'get_tool_schema', 'extract_toolkit_methods', 'clear_toolkit_schema_cache', 'get_toolkit_schema_cache_size', 'RESPONSE_FORMAT_TOOL_NAME']
+
+# Global cache for ToolKit schema generation
+_toolkit_schema_cache: Dict[str, Dict[str, Any]] = {}
+
+def _get_toolkit_cache_key(toolkit_instance: Any, method_name: str) -> str:
+    """Generate a cache key for a ToolKit method schema."""
+    toolkit_class = toolkit_instance.__class__
+    return f"{toolkit_class.__module__}.{toolkit_class.__name__}:{method_name}"
+
+def _get_cached_toolkit_schema(toolkit_instance: Any, method_name: str) -> Optional[Dict[str, Any]]:
+    """Get cached schema for a ToolKit method."""
+    cache_key = _get_toolkit_cache_key(toolkit_instance, method_name)
+    return _toolkit_schema_cache.get(cache_key)
+
+def _cache_toolkit_schema(toolkit_instance: Any, method_name: str, schema: Dict[str, Any]) -> None:
+    """Cache schema for a ToolKit method."""
+    cache_key = _get_toolkit_cache_key(toolkit_instance, method_name)
+    _toolkit_schema_cache[cache_key] = schema
+
+def clear_toolkit_schema_cache() -> None:
+    """Clear the ToolKit schema cache."""
+    global _toolkit_schema_cache
+    _toolkit_schema_cache.clear()
+
+def get_toolkit_schema_cache_size() -> int:
+    """Get the number of cached ToolKit schemas."""
+    return len(_toolkit_schema_cache)
 
 
 def filter_toolflow_params(**kwargs: Any) -> Tuple[Dict[str, Any], int, bool, Any, bool, bool]:

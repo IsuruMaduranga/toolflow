@@ -285,6 +285,10 @@ class MathToolKit:
         """Multiply two numbers."""
         return round(a * b, self.precision)
 
+    def _private_helper_method(self) -> str:
+        """ private methods are not converted to tools """
+        pass
+
 # Use the entire ToolKit
 math_tools = MathToolKit(precision=3)
 result = client.chat.completions.create(
@@ -299,6 +303,7 @@ result = client.chat.completions.create(
 - ✅ **State Preservation**: ToolKit instances maintain configuration
 - ✅ **Mixed Usage**: Combine ToolKits with regular functions
 - ✅ **Automatic Discovery**: All public methods become tools
+- ✅ **Schema Caching**: ToolKit method schemas are cached for optimal performance
 - ✅ **Backward Compatible**: Existing `tools=[func1, func2]` still works
 
 ## Migration Guide
