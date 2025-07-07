@@ -3,7 +3,9 @@ OpenAI provider for toolflow.
 
 This module provides factory functions to create toolflow wrappers around OpenAI clients.
 """
+from typing import Union
 from .wrappers import OpenAIWrapper, AsyncOpenAIWrapper
+from .protocols import OpenAIProtocol, AsyncOpenAIProtocol
 
 try:
     import openai
@@ -11,7 +13,7 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-def from_openai(client, full_response: bool = False):
+def from_openai(client: Union[openai.OpenAI, openai.AsyncOpenAI], full_response: bool = False) -> OpenAIProtocol | AsyncOpenAIProtocol:
     """
     Create a toolflow wrapper around an existing OpenAI client.
     
@@ -42,6 +44,10 @@ def from_openai(client, full_response: bool = False):
         client = toolflow.from_openai(openai.OpenAI(), full_response=True)
         response = client.chat.completions.create(...)
         content = response.choices[0].message.content
+        
+        # Async context management
+        async with toolflow.from_openai(openai.AsyncOpenAI()) as client:
+            content = await client.chat.completions.create(...)
     """
     if not OPENAI_AVAILABLE:
         raise ImportError("OpenAI library not installed. Install with: pip install openai")

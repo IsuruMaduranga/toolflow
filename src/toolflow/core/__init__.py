@@ -3,7 +3,7 @@ from .mixins import ExecutorMixin
 from .decorators import tool
 from .tool_execution import set_max_workers, get_max_workers, set_executor
 from .execution_loops import set_async_yield_frequency
-from .utils import filter_toolflow_params, extract_toolkit_methods
+from .utils import filter_toolflow_params, extract_toolkit_methods, clear_toolkit_schema_cache, get_toolkit_schema_cache_size
 from .exceptions import MaxToolCallsError, MaxTokensError, ResponseFormatError, MissingAnnotationError, UndescribableTypeError
 
 __all__ = [
@@ -22,5 +22,7 @@ __all__ = [
     "set_executor",
     "set_async_yield_frequency",
     "filter_toolflow_params",
-    "extract_toolkit_methods"
+    "extract_toolkit_methods",
+    "clear_toolkit_schema_cache",
+    "get_toolkit_schema_cache_size"
 ]

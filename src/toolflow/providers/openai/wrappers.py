@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any, List, Dict, overload, Iterable, AsyncIterable, Optional, Union, TypeVar
 from typing_extensions import Literal
+try:
+    from collections.abc import AsyncContextManager
+except ImportError:
+    # Fallback for Python < 3.11
+    from typing import AsyncContextManager
 
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
@@ -29,6 +34,34 @@ class OpenAIWrapper:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client) + super().__dir__()))
+    
+    @property
+    def raw(self) -> OpenAI:
+        """Access the underlying OpenAI client for debugging or advanced use."""
+        return self._client
+    
+    def unwrap(self) -> OpenAI:
+        return self._client
+    
+    def __enter__(self) -> OpenAIWrapper:
+        self._client.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self._client.__exit__(exc_type, exc_val, exc_tb)
+    
+    def __repr__(self) -> str:
+        return (
+            f"<OpenAIWrapper client={self._client.__class__.__name__} "
+            f"full_response={self.full_response}>"
+        )
+
+    def __str__(self) -> str:
+        return f"Toolflow OpenAI client [sync, full_response={self.full_response}]"
 
 class ChatWrapper:
     def __init__(self, client: OpenAI, full_response: bool = False):
@@ -38,6 +71,10 @@ class ChatWrapper:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client.chat, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client.chat) + super().__dir__()))
 
 class CompletionsWrapper(ExecutorMixin):
     def __init__(self, client: OpenAI, full_response: bool = False):
@@ -312,10 +349,14 @@ class CompletionsWrapper(ExecutorMixin):
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client.chat.completions) + super().__dir__()))
 
 # --- Asynchronous Wrappers ---
 
-class AsyncOpenAIWrapper:
+class AsyncOpenAIWrapper(AsyncContextManager):
     """Wrapped AsyncOpenAI client that transparently adds toolflow capabilities."""
     def __init__(self, client: AsyncOpenAI, full_response: bool = False):
         self._client = client
@@ -324,6 +365,36 @@ class AsyncOpenAIWrapper:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client) + super().__dir__()))
+    
+    @property
+    def raw(self) -> AsyncOpenAI:
+        """Access the underlying AsyncOpenAI client for debugging or advanced use."""
+        return self._client
+    
+    def unwrap(self) -> AsyncOpenAI:
+        return self._client
+    
+    async def __aenter__(self) -> AsyncOpenAIWrapper:
+        """Support async context management."""
+        await self._client.__aenter__()
+        return self
+    
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        """Support async context management."""
+        return await self._client.__aexit__(exc_type, exc_val, exc_tb)
+    
+    def __repr__(self) -> str:
+        return (
+            f"<AsyncOpenAIWrapper client={self._client.__class__.__name__} "
+            f"full_response={self.full_response}>"
+        )
+    
+    def __str__(self) -> str:
+        return f"Toolflow OpenAI client [async, full_response={self.full_response}]"
 
 class AsyncChatWrapper:
     def __init__(self, client: AsyncOpenAI, full_response: bool = False):
@@ -333,6 +404,10 @@ class AsyncChatWrapper:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client.chat, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client.chat) + super().__dir__()))
 
 class AsyncCompletionsWrapper(ExecutorMixin):
     def __init__(self, client: AsyncOpenAI, full_response: bool = False):
@@ -606,3 +681,7 @@ class AsyncCompletionsWrapper(ExecutorMixin):
     
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
+    
+    def __dir__(self) -> List[str]:
+        """Improve IDE autocompletion by including client attributes."""
+        return list(set(dir(self._client.chat.completions) + super().__dir__()))
