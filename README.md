@@ -29,9 +29,12 @@ pip install toolflow
 # Provider-specific installs
 pip install toolflow[openai]      # OpenAI only
 pip install toolflow[anthropic]   # Anthropic only
+pip install toolflow[gemini]      # Google Gemini only
 ```
 
 ## Quick Start
+
+### OpenAI
 
 ```python
 import toolflow
@@ -65,6 +68,33 @@ result = client.chat.completions.create(
     response_format=List[CityWeather]
 )
 print(result)  # List of CityWeather objects
+```
+
+### Google Gemini
+
+```python
+import toolflow
+import google.generativeai as genai
+from pydantic import BaseModel
+from typing import List
+
+# Configure Gemini
+genai.configure(api_key="your-gemini-api-key")
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# Only change needed!
+client = toolflow.from_gemini(model)
+
+def get_weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"Weather in {city}: Sunny, 72°F"
+
+# Automatic parallel tool execution
+result = client.generate_content(
+    "What's the weather in NYC and London?",
+    tools=[get_weather]
+)
+print(result)  # Direct string output
 ```
 
 ## Core Features
@@ -390,11 +420,12 @@ client.chat.completions.create(
 ### Currently Supported
 - ✅ **OpenAI**: Chat Completions, reasoning mode (`reasoning_effort`)
 - ✅ **Anthropic**: Messages API, thinking mode (`thinking=True`)
-- ✅ **Both**: Tool calling, streaming, structured outputs
+- ✅ **Google Gemini**: GenerativeModel API, function calling
+- ✅ **All providers**: Tool calling, streaming, structured outputs
 
 ### Coming Soon
 - ⏳ **OpenAI Responses API** - New stateful API with hosted tools
-- 🔄 **Other providers** - Groq, Gemini, etc.
+- 🔄 **Other providers** - Groq, etc.
 
 ## Error Handling
 

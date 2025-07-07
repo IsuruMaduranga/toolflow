@@ -15,7 +15,7 @@ from toolflow.core import (
     MaxTokensError,
 )
 from toolflow.core import set_async_yield_frequency
-from toolflow.providers import from_openai, from_anthropic
+from toolflow.providers import from_openai, from_anthropic, from_gemini
 from toolflow.core import tool
 from . import errors
 
@@ -33,6 +33,7 @@ __all__ = [
     # Provider factory functions
     "from_openai",
     "from_anthropic",
+    "from_gemini",
     
     # Utilities and decorators
     "tool",
