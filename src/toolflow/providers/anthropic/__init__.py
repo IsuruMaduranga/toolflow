@@ -3,7 +3,9 @@ Anthropic provider for toolflow.
 
 This module provides factory functions to create toolflow wrappers around Anthropic clients.
 """
+from typing import Union
 from .wrappers import AnthropicWrapper, AsyncAnthropicWrapper
+from .protocols import AnthropicProtocol, AsyncAnthropicProtocol
 
 try:
     import anthropic
@@ -12,7 +14,7 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
 
 
-def from_anthropic(client, full_response: bool = False):
+def from_anthropic(client: Union[anthropic.Anthropic, anthropic.AsyncAnthropic], full_response: bool = False) -> AnthropicProtocol | AsyncAnthropicProtocol:
     """
     Create a toolflow wrapper around an existing Anthropic client.
     
@@ -43,6 +45,10 @@ def from_anthropic(client, full_response: bool = False):
         client = toolflow.from_anthropic(anthropic.Anthropic(), full_response=True)
         response = client.messages.create(...)
         content = response.content[0].text
+        
+        # Async context management
+        async with toolflow.from_anthropic(anthropic.AsyncAnthropic()) as client:
+            content = await client.messages.create(...)
         
         # With tools
         @toolflow.tool
