@@ -268,9 +268,6 @@ class OpenAIHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         # Get OpenAI-format schemas from parent
         tool_schemas, tool_map = super().prepare_tool_schemas(tools)
         
-        # Store tool map for error handling
-        self._last_tool_map = tool_map
-        
         # OpenAI uses the schema as-is
         return tool_schemas, tool_map
 
