@@ -1,6 +1,7 @@
+import inspect
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Generator, List, Dict, Tuple, Optional
-from .utils import get_structured_output_tool
+from .utils import get_structured_output_tool, extract_toolkit_methods
 from .constants import RESPONSE_FORMAT_TOOL_NAME
 
 class TransportAdapter(ABC):
@@ -109,14 +110,48 @@ class MessageAdapter(ABC):
 
     def prepare_tool_schemas(self, tools: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Prepare tool schemas and tool map."""
-        import inspect
-        from .constants import RESPONSE_FORMAT_TOOL_NAME
         
         tool_schemas = []
         tool_map = {}
 
         if tools:
             for tool in tools:
+                # Check if tool is a ToolKit instance (class instance with methods)
+                # Must not be a built-in type, class, function, or builtin
+                if (hasattr(tool, '__class__') and 
+                    not inspect.isclass(tool) and 
+                    not callable(tool) and 
+                    not inspect.isbuiltin(tool) and
+                    type(tool).__module__ != 'builtins'):
+                    
+                    # Extract methods from ToolKit instance
+                    try:
+                        methods = extract_toolkit_methods(tool)
+                        for method in methods:
+                            # Process each method as a tool
+                            # Note: Don't cache metadata on bound methods since they're read-only
+                            try:
+                                schema = method._tool_metadata
+                            except AttributeError:
+                                schema = self.get_tool_schema(method)
+                                # Don't try to cache on bound methods - they don't support attribute assignment
+                                try:
+                                    method._tool_metadata = schema
+                                except (AttributeError, TypeError):
+                                    # Bound methods don't support attribute assignment, skip caching
+                                    pass
+
+                            # check if the tool is the response format tool and it is not an internal tool
+                            if schema["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME and not hasattr(method, "__internal_tool__"):
+                                raise ValueError(f"You cannot use the {RESPONSE_FORMAT_TOOL_NAME} as a tool. It is used internally to format the response.")
+                                
+                            tool_schemas.append(schema)
+                            tool_map[schema["function"]["name"]] = method
+                        continue
+                    except ValueError as e:
+                        # If extraction fails, treat as invalid tool
+                        raise ValueError(f"Invalid ToolKit: {e}")
+                
                 # check is tool is a function else error
                 if inspect.isbuiltin(tool):
                     raise ValueError(f"Tool {tool} is a builtin function. You cannot use it as a tool.")
@@ -138,7 +173,7 @@ class MessageAdapter(ABC):
                     tool_map[schema["function"]["name"]] = tool
                     continue
                 else:
-                    raise ValueError(f"Tool {tool} is not a function")
+                    raise ValueError(f"Tool {tool} is not a function or ToolKit instance")
         return tool_schemas, tool_map
 
 class ResponseFormatAdapter(ABC):

@@ -12,8 +12,7 @@ from pydantic.errors import PydanticSchemaGenerationError
 from pydantic.fields import FieldInfo
 from docstring_parser import parse
 
-__all__ = ['filter_toolflow_params', 'get_structured_output_tool', 'get_tool_schema', 'RESPONSE_FORMAT_TOOL_NAME']
-
+__all__ = ['filter_toolflow_params', 'get_structured_output_tool', 'get_tool_schema', 'extract_toolkit_methods', 'RESPONSE_FORMAT_TOOL_NAME']
 
 
 def filter_toolflow_params(**kwargs: Any) -> Tuple[Dict[str, Any], int, bool, Any, bool, bool]:
@@ -133,14 +132,30 @@ def get_tool_schema(
 
     # -------------------------------------------------- signature & docstring
     sig = inspect.signature(func)
-    if not hasattr(func, "_tf_doc"):
-        func._tf_doc = parse(inspect.getdoc(func) or "")  # type: ignore[attr-defined]
-    doc_params = {p.arg_name: p for p in func._tf_doc.params}
+    
+    # Handle bound methods vs regular functions for docstring parsing
+    try:
+        if not hasattr(func, "_tf_doc"):
+            func._tf_doc = parse(inspect.getdoc(func) or "")  # type: ignore[attr-defined]
+        doc_params = {p.arg_name: p for p in func._tf_doc.params}
+    except AttributeError:
+        # For bound methods, we can't set _tf_doc, so parse inline
+        parsed_doc = parse(inspect.getdoc(func) or "")
+        doc_params = {p.arg_name: p for p in parsed_doc.params}
 
     func_name = name or func.__name__
-    merged_doc_descr = (
-        (func._tf_doc.short_description or "") + (func._tf_doc.long_description or "")
-    ).strip()
+    
+    # Handle docstring description for both regular functions and bound methods
+    try:
+        merged_doc_descr = (
+            (func._tf_doc.short_description or "") + (func._tf_doc.long_description or "")
+        ).strip()
+    except AttributeError:
+        # For bound methods, use parsed_doc
+        merged_doc_descr = (
+            (parsed_doc.short_description or "") + (parsed_doc.long_description or "")
+        ).strip()
+    
     func_description = description or merged_doc_descr or func_name
 
     # -------------------------------------------------- collect field specs
@@ -155,6 +170,10 @@ def get_tool_schema(
             continue
 
         pname = param.name
+        
+        # Skip 'self' parameter for bound methods
+        if pname == 'self':
+            continue
 
         if param.annotation is inspect.Parameter.empty:
             raise MissingAnnotationError(
@@ -270,3 +289,47 @@ def process_response_format(
     
     # No response format tool call found - let normal execution continue
     return None
+
+def extract_toolkit_methods(toolkit_instance: Any) -> List[Callable]:
+    """
+    Extract public methods from a ToolKit instance as individual tools.
+    
+    Args:
+        toolkit_instance: An instance of a class containing tool methods
+        
+    Returns:
+        List of bound methods that can be used as tools
+        
+    Raises:
+        ValueError: If the object is not a class instance or has no valid tool methods
+    """
+    if not hasattr(toolkit_instance, '__class__'):
+        raise ValueError(f"Object {toolkit_instance} is not a class instance")
+    
+    if inspect.isclass(toolkit_instance):
+        raise ValueError(f"Expected an instance, got a class {toolkit_instance}. Create an instance first.")
+    
+    if callable(toolkit_instance):
+        raise ValueError(f"Object {toolkit_instance} appears to be a function, not a ToolKit instance")
+    
+    # Check if it's a built-in type (int, str, list, etc.) after other checks
+    if type(toolkit_instance).__module__ == 'builtins':
+        raise ValueError(f"Object {toolkit_instance} is a built-in type, not a ToolKit instance")
+    
+    # Get all methods from the instance
+    methods = []
+    for name, method in inspect.getmembers(toolkit_instance, predicate=inspect.ismethod):
+        # Skip private/dunder methods and common object methods
+        if (name.startswith('_') or 
+            name in {'__init__', '__new__', '__str__', '__repr__', '__dict__', '__weakref__'}):
+            continue
+        
+        # Ensure the method is callable and properly bound
+        if callable(method):
+            methods.append(method)
+    
+    if not methods:
+        class_name = toolkit_instance.__class__.__name__
+        raise ValueError(f"ToolKit {class_name} has no public methods to use as tools")
+    
+    return methods

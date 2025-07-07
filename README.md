@@ -266,6 +266,41 @@ Missing type hints raise **`MissingAnnotationError`**.
 
 Need set-semantics? Use `set[T]` + an **immutable**/frozen model (or `FrozenSet[T]`). Otherwise prefer `list[T]`.
 
+## ToolKits - Organize Tools in Classes
+
+Group related tools into classes for better organization and state management:
+
+```python
+class MathToolKit:
+    """Mathematical operations toolkit."""
+    
+    def __init__(self, precision: int = 2):
+        self.precision = precision
+    
+    def add(self, a: float, b: float) -> float:
+        """Add two numbers."""
+        return round(a + b, self.precision)
+    
+    def multiply(self, a: float, b: float) -> float:
+        """Multiply two numbers."""
+        return round(a * b, self.precision)
+
+# Use the entire ToolKit
+math_tools = MathToolKit(precision=3)
+result = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Calculate (15.7 + 8.3) * 2"}],
+    tools=[math_tools],  # Pass the ToolKit instance
+    parallel_tool_execution=True
+)
+```
+
+**Features:**
+- ✅ **State Preservation**: ToolKit instances maintain configuration
+- ✅ **Mixed Usage**: Combine ToolKits with regular functions
+- ✅ **Automatic Discovery**: All public methods become tools
+- ✅ **Backward Compatible**: Existing `tools=[func1, func2]` still works
+
 ## Migration Guide
 
 ### From OpenAI SDK
