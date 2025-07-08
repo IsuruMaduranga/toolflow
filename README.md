@@ -82,7 +82,7 @@ from typing import List
 genai.configure(api_key="your-gemini-api-key")
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Only change needed!
+# Create a toolflow client for Gemini
 client = toolflow.from_gemini(model)
 
 def get_weather(city: str) -> str:
@@ -92,7 +92,9 @@ def get_weather(city: str) -> str:
 # Automatic parallel tool execution
 result = client.generate_content(
     "What's the weather in NYC and London?",
-    tools=[get_weather]
+    tools=[get_weather],
+    parallel_tool_execution=True,
+    max_tool_call_rounds=2  # allow separate calls for each city
 )
 print(result)  # Direct string output
 ```
