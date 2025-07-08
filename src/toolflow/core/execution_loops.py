@@ -34,14 +34,15 @@ def _initialize_execution_context(handler: Handler, **kwargs: Any):
     response_format_tool_call_required = False
 
     # Convert single content string to proper message format
-    contents = kwargs.get("contents")
+    contents = kwargs.pop("contents", None)
     if contents and isinstance(contents, str):
         # Convert string to user message format
         messages = [{"role": "user", "content": contents}]
-        kwargs["contents"] = messages
+        kwargs["contents"] = contents  # Keep original contents for Gemini
     elif contents and not messages:
         # Use contents as messages if no separate messages provided
         messages = contents if isinstance(contents, list) else [contents]
+        kwargs["contents"] = contents  # Keep original contents for Gemini
 
     if isinstance(handler, ResponseFormatAdapter):
         response_format = kwargs.pop("response_format", None)

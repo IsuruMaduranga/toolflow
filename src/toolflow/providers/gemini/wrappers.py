@@ -213,45 +213,8 @@ class GeminiWrapper(ExecutorMixin):
 
     def _convert_messages_to_gemini_format(self, contents: Any) -> Any:
         """Convert various content formats to Gemini's expected format."""
-        # If it's already a string, return as-is
-        if isinstance(contents, str):
-            return contents
-        
-        # If it's a list of messages (like OpenAI/Anthropic format), convert
-        if isinstance(contents, list) and len(contents) > 0:
-            if isinstance(contents[0], dict) and "role" in contents[0]:
-                # This looks like OpenAI/Anthropic message format
-                # Convert to Gemini format
-                gemini_contents = []
-                for msg in contents:
-                    if msg["role"] == "user":
-                        gemini_contents.append({
-                            "role": "user",
-                            "parts": [{"text": msg.get("content", "")}]
-                        })
-                    elif msg["role"] == "assistant" or msg["role"] == "model":
-                        parts = []
-                        if "content" in msg and msg["content"]:
-                            parts.append({"text": msg["content"]})
-                        gemini_contents.append({
-                            "role": "model",
-                            "parts": parts
-                        })
-                    elif msg["role"] == "system":
-                        # Gemini doesn't have system messages, prepend to first user message
-                        if gemini_contents and gemini_contents[-1]["role"] == "user":
-                            existing_text = gemini_contents[-1]["parts"][0]["text"]
-                            gemini_contents[-1]["parts"][0]["text"] = f"System: {msg['content']}\n\nUser: {existing_text}"
-                        else:
-                            gemini_contents.append({
-                                "role": "user",
-                                "parts": [{"text": f"System: {msg['content']}"}]
-                            })
-                
-                return gemini_contents
-        
-        # Return as-is for other formats
-        return contents
+        # Delegate to handler to avoid code duplication
+        return self.handler._convert_messages_to_gemini_format(contents)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
