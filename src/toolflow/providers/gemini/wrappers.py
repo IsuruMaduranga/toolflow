@@ -185,6 +185,11 @@ class GeminiWrapper(ExecutorMixin):
         if contents is not None:
             kwargs['contents'] = contents
         return self._create_sync(**kwargs)
+    
+    async def generate_content_async(self, contents: Any = None, **kwargs: Any) -> Any:
+        if contents is not None:
+            kwargs['contents'] = contents
+        return await self._create_async(**kwargs)
 
     def _prepare_gemini_tools(self, tools: List[Any]) -> List[Dict[str, Any]]:
         """Convert toolflow tools to Gemini function declarations."""

@@ -26,11 +26,15 @@ model = genai.GenerativeModel('gemini-1.5-flash')
 # Note: Gemini doesn't have native async support, but toolflow can still provide async interfaces
 client = toolflow.from_gemini(model)
 
+# Note: Since Gemini doesn't have native async support, we need to use sync tools
+# but we can still demonstrate async patterns with asyncio.to_thread
+# implement this temp part with real api currently i implement just dummy things
+
 @toolflow.tool
-async def async_weather_tool(city: str) -> str:
-    """Get weather for a city asynchronously."""
-    print(f"\n[Async Tool] Getting weather for {city}...")
-    await asyncio.sleep(1)  # Simulate async API call
+def async_weather_tool(city: str) -> str:
+    """Get weather for a city (sync implementation for Gemini compatibility)."""
+    print(f"\n[Tool] Getting weather for {city}...")
+    time.sleep(1)  # Simulate API call delay
     
     weather_data = {
         "New York": "Sunny, 72°F",
@@ -41,26 +45,26 @@ async def async_weather_tool(city: str) -> str:
         "Berlin": "Overcast, 12°C"
     }
     result = weather_data.get(city, f"Weather data not available for {city}")
-    print(f"[Async Tool] Weather result for {city}: {result}")
+    print(f"[Tool] Weather result for {city}: {result}")
     return result
 
 @toolflow.tool
-async def async_calculate_tool(expression: str) -> str:
-    """Calculate a mathematical expression asynchronously."""
-    print(f"\n[Async Tool] Calculating: {expression}")
-    await asyncio.sleep(0.5)  # Simulate async computation
+def async_calculate_tool(expression: str) -> str:
+    """Calculate a mathematical expression (sync implementation for Gemini compatibility)."""
+    print(f"\n[Tool] Calculating: {expression}")
+    time.sleep(0.5)  # Simulate computation delay
     try:
         result = eval(expression)
-        print(f"[Async Tool] Math result: {result}")
+        print(f"[Tool] Math result: {result}")
         return f"{expression} = {result}"
     except Exception as e:
         return f"Error calculating {expression}: {str(e)}"
 
 @toolflow.tool
-async def async_translate_tool(text: str, target_language: str) -> str:
-    """Translate text to a target language asynchronously."""
-    print(f"\n[Async Tool] Translating '{text[:30]}...' to {target_language}")
-    await asyncio.sleep(1.2)  # Simulate API call delay
+def async_translate_tool(text: str, target_language: str) -> str:
+    """Translate text to a target language (sync implementation for Gemini compatibility)."""
+    print(f"\n[Tool] Translating '{text[:30]}...' to {target_language}")
+    time.sleep(1.2)  # Simulate API call delay
     
     # Mock translation service
     translations = {
@@ -85,14 +89,14 @@ async def async_translate_tool(text: str, target_language: str) -> str:
     }
     
     result = translations.get(target_language.lower(), {}).get(text, f"Translation not available for '{text}' to {target_language}")
-    print(f"[Async Tool] Translation result: {result}")
+    print(f"[Tool] Translation result: {result}")
     return result
 
 @toolflow.tool
-async def async_fetch_data(data_type: str) -> str:
-    """Fetch data of a specific type asynchronously."""
-    print(f"\n[Async Tool] Fetching {data_type} data...")
-    await asyncio.sleep(1.5)  # Simulate API call
+def async_fetch_data(data_type: str) -> str:
+    """Fetch data of a specific type (sync implementation for Gemini compatibility)."""
+    print(f"\n[Tool] Fetching {data_type} data...")
+    time.sleep(1.5)  # Simulate API call
     
     data_sources = {
         "news": "Breaking: Tech stocks rise 5% amid AI breakthroughs",
@@ -103,7 +107,7 @@ async def async_fetch_data(data_type: str) -> str:
     }
     
     result = data_sources.get(data_type.lower(), f"No data available for {data_type}")
-    print(f"[Async Tool] Data result: {result}")
+    print(f"[Tool] Data result: {result}")
     return result
 
 async def example_basic_async():
@@ -163,19 +167,26 @@ async def example_async_streaming():
     print("Question: Explain the benefits of async programming")
     print("Response: ", end="", flush=True)
     
-    # Note: For streaming, we need to handle it differently since it's an iterator
+    # For Gemini streaming, we need to handle it differently since the stream returns objects
     def generate_streaming():
-        return client.generate_content(
+        stream = client.generate_content(
             "Explain the benefits of async programming in Python",
             stream=True
         )
+        # Process the stream and collect text
+        text_parts = []
+        for chunk in stream:
+            try:
+                if hasattr(chunk, 'text') and chunk.text:
+                    text_parts.append(chunk.text)
+            except ValueError:
+                # This happens when chunk has no valid text parts
+                pass
+        return "".join(text_parts)
     
     # Get the streaming response in a thread
-    stream_response = await asyncio.to_thread(generate_streaming)
-    
-    # Process the stream (this part is synchronous but fast)
-    for content in stream_response:
-        print(content, end="", flush=True)
+    full_text = await asyncio.to_thread(generate_streaming)
+    print(full_text)
     
     print("\n\n" + "="*60 + "\n")
 
@@ -183,21 +194,21 @@ async def example_complex_async_workflow():
     """Complex async workflow with multiple steps."""
     print("5. Complex async workflow:")
     
-    # Step 1: Get weather data for multiple cities concurrently
+    # Step 1: Get weather data for multiple cities concurrently using threads
     weather_tasks = [
-        async_weather_tool("New York"),
-        async_weather_tool("Tokyo"), 
-        async_weather_tool("London")
+        asyncio.to_thread(async_weather_tool, "New York"),
+        asyncio.to_thread(async_weather_tool, "Tokyo"), 
+        asyncio.to_thread(async_weather_tool, "London")
     ]
     
     print("Getting weather data for multiple cities...")
     weather_results = await asyncio.gather(*weather_tasks)
     
-    # Step 2: Fetch different types of data concurrently
+    # Step 2: Fetch different types of data concurrently using threads
     data_tasks = [
-        async_fetch_data("news"),
-        async_fetch_data("stocks"),
-        async_calculate_tool("100 * 1.05 ** 10")  # Compound interest calculation
+        asyncio.to_thread(async_fetch_data, "news"),
+        asyncio.to_thread(async_fetch_data, "stocks"),
+        asyncio.to_thread(async_calculate_tool, "100 * 1.05 ** 10")  # Compound interest calculation
     ]
     
     print("Fetching various data types...")

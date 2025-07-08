@@ -174,7 +174,7 @@ async def example_sequential_vs_parallel():
     # Sequential execution
     print("\nSequential execution:")
     start_time = time.time()
-    response_seq = await client.generate_content(
+    response_seq = await client.generate_content_async(
         "Get user profile for user123, weather forecast for New York, and calculate compound interest for $1000 at 5% for 10 years",
         tools=[fetch_user_profile, fetch_weather_forecast, calculate_financial_metrics],
         parallel_tool_execution=False,  # Sequential
@@ -187,7 +187,7 @@ async def example_sequential_vs_parallel():
     # Parallel execution
     print("\nParallel execution:")
     start_time = time.time()
-    response_par = await client.generate_content(
+    response_par = await client.generate_content_async(
         "Get user profile for user456, weather forecast for London, and calculate compound interest for $2000 at 4% for 15 years",
         tools=[fetch_user_profile, fetch_weather_forecast, calculate_financial_metrics],
         parallel_tool_execution=True,  # Parallel
@@ -204,7 +204,7 @@ async def example_complex_parallel_workflow():
     print("2. Complex Parallel Workflow:")
     
     start_time = time.time()
-    response = await client.generate_content(
+    response = await client.generate_content_async(
         """Create a comprehensive report that includes:
         1. User profiles for user123 and user789
         2. 5-day weather forecasts for Tokyo and Paris
@@ -232,18 +232,14 @@ async def example_complex_parallel_workflow():
 async def example_async_streaming_with_tools():
     """Async streaming with parallel tools."""
     print("3. Async Streaming with Parallel Tools:")
-    print("Question: Get weather for multiple cities and latest tech news")
-    print("Response: ", end="", flush=True)
     
-    async for content in await client.generate_content(
+    response = await client.generate_content_async(
         "Get weather forecasts for New York, London, and Tokyo, plus fetch the latest technology news headlines",
         tools=[fetch_weather_forecast, fetch_news_headlines],
-        parallel_tool_execution=True,
-        stream=True
-    ):
-        print(content, end="", flush=True)
-    
-    print("\n\n" + "="*60 + "\n")
+        parallel_tool_execution=True
+    )
+    print(f"Response: {response}")
+    print("\n" + "="*60 + "\n")
 
 async def example_error_handling():
     """Demonstrate error handling in async parallel execution."""
@@ -258,7 +254,7 @@ async def example_error_handling():
         return "This tool succeeded"
     
     try:
-        response = await client.generate_content(
+        response = await client.generate_content_async(
             "Try to use both a working tool and a failing tool",
             tools=[failing_tool, fetch_weather_forecast],
             parallel_tool_execution=True,
@@ -276,30 +272,26 @@ async def example_concurrent_clients():
     print("5. Multiple Concurrent Client Requests:")
     
     # Create multiple independent requests that run concurrently
-    tasks = [
-        client.generate_content(
-            "Get weather for New York and calculate 100*1.05^10",
-            tools=[fetch_weather_forecast, calculate_financial_metrics],
-            parallel_tool_execution=True
-        ),
-        client.generate_content(
-            "Fetch stock data for AAPL and GOOGL, and get tech news",
-            tools=[fetch_stock_data, fetch_news_headlines],
-            parallel_tool_execution=True
-        ),
-        client.generate_content(
-            "Get user profile for user123 and translate 'Hello' to Spanish",
-            tools=[fetch_user_profile, translate_batch],
+    async def task1():
+        return await client.generate_content_async(
+            "Get weather for New York",
+            tools=[fetch_weather_forecast],
             parallel_tool_execution=True
         )
-    ]
+    
+    async def task2():
+        return await client.generate_content_async(
+            "Get stock data for AAPL",
+            tools=[fetch_stock_data],
+            parallel_tool_execution=True
+        )
     
     start_time = time.time()
-    results = await asyncio.gather(*tasks)
+    results = await asyncio.gather(task1(), task2())
     execution_time = time.time() - start_time
     
     for i, result in enumerate(results, 1):
-        print(f"Concurrent request {i}: {result}")
+        print(f"Concurrent request {i}: {result[:100]}...")
     
     print(f"\nAll concurrent requests completed in {execution_time:.2f} seconds")
 

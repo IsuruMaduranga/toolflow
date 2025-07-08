@@ -36,8 +36,8 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         """Convert toolflow parameters to Gemini API format."""
         gemini_kwargs = {}
         
-        # Handle contents
-        contents = kwargs.get('contents')
+        # Handle contents (check both 'contents' and 'messages')
+        contents = kwargs.get('contents') or kwargs.get('messages')
         if contents:
             gemini_kwargs['contents'] = self._convert_messages_to_gemini_format(contents)
         
@@ -49,10 +49,18 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
             
             for schema in tool_schemas:
                 function_info = schema["function"]
+                parameters = function_info.get("parameters", {})
+                
+                # Store $defs for reference resolution
+                if "$defs" in parameters:
+                    self._current_schema_defs = parameters["$defs"]
+                else:
+                    self._current_schema_defs = {}
+                
                 gemini_tool = {
                     "name": function_info["name"],
                     "description": function_info.get("description", ""),
-                    "parameters": self._convert_schema_to_gemini_format(function_info.get("parameters", {}))
+                    "parameters": self._convert_schema_to_gemini_format(parameters)
                 }
                 gemini_tools.append(gemini_tool)
             
@@ -71,6 +79,10 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
 
     def _convert_schema_to_gemini_format(self, schema: Dict[str, Any]) -> Dict[str, Any]:
         """Convert JSON schema to Gemini format."""
+        # Handle $ref by resolving it
+        if "$ref" in schema:
+            return self._resolve_ref(schema)
+        
         gemini_schema = {}
         
         if "type" in schema:
@@ -92,6 +104,25 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
             gemini_schema["items"] = self._convert_schema_to_gemini_format(schema["items"])
             
         return gemini_schema
+    
+    def _resolve_ref(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve $ref references in JSON schema."""
+        ref = schema.get("$ref", "")
+        if ref.startswith("#/$defs/"):
+            # Find the root schema with $defs
+            def_name = ref.split("/")[-1]
+            # We need to find the original schema with $defs
+            # For now, let's handle the common case where this is in the context of a tool parameter
+            if hasattr(self, '_current_schema_defs'):
+                defs = self._current_schema_defs
+                if def_name in defs:
+                    return self._convert_schema_to_gemini_format(defs[def_name])
+        
+        # Fallback: return basic object schema
+        return {
+            "type": "OBJECT",
+            "description": schema.get("description", f"Referenced object: {ref}")
+        }
 
     def _convert_messages_to_gemini_format(self, contents: Any) -> Any:
         """Convert various content formats to Gemini's expected format."""
@@ -102,8 +133,7 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         # If it's a list of messages (like OpenAI/Anthropic format), convert
         if isinstance(contents, list) and len(contents) > 0:
             if isinstance(contents[0], dict) and "role" in contents[0]:
-                # This looks like OpenAI/Anthropic message format
-                # Convert to Gemini format
+                # This looks like message format - check if it's already in Gemini format
                 gemini_contents = []
                 for msg in contents:
                     if msg["role"] == "user":
@@ -112,13 +142,22 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
                             "parts": [{"text": msg.get("content", "")}]
                         })
                     elif msg["role"] == "assistant" or msg["role"] == "model":
-                        parts = []
-                        if "content" in msg and msg["content"]:
-                            parts.append({"text": msg["content"]})
-                        gemini_contents.append({
-                            "role": "model",
-                            "parts": parts
-                        })
+                        # Check if this is already in Gemini format with parts
+                        if "parts" in msg:
+                            # Already in Gemini format, use as-is
+                            gemini_contents.append(msg)
+                        else:
+                            # Convert from other format
+                            parts = []
+                            if "content" in msg and msg["content"]:
+                                parts.append({"text": msg["content"]})
+                            gemini_contents.append({
+                                "role": "model",
+                                "parts": parts
+                            })
+                    elif msg["role"] == "function":
+                        # Already in Gemini format with function response
+                        gemini_contents.append(msg)
                     elif msg["role"] == "system":
                         # Gemini doesn't have system messages, prepend to first user message
                         if gemini_contents and gemini_contents[-1]["role"] == "user":
@@ -219,9 +258,11 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         """Build assistant message in Gemini format."""
         parts = []
         
-        if text:
+        # Only add text if it's not empty
+        if text and text.strip():
             parts.append({"text": text})
         
+        # Add tool calls
         for tool_call in tool_calls:
             parts.append({
                 "function_call": {
@@ -230,6 +271,10 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
                 }
             })
         
+        # If no parts, add empty text to avoid validation error
+        if not parts:
+            parts.append({"text": ""})
+        
         return {
             "role": "model",
             "parts": parts
@@ -237,26 +282,33 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
 
     def build_tool_result_messages(self, tool_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Build tool result messages in Gemini format."""
-        messages = []
+        if not tool_results:
+            return []
         
+        # Gemini expects all function responses in a single message with multiple parts
+        parts = []
         for result in tool_results:
             # Get tool name from the stored mapping
             tool_call_id = result.get("tool_call_id", "unknown")
             tool_name = self._tool_call_name_map.get(tool_call_id, tool_call_id)
             
-            messages.append({
-                "role": "function",
-                "parts": [{
-                    "function_response": {
-                        "name": tool_name,
-                        "response": {
-                            "result": result["output"]
-                        }
-                    }
-                }]
+            # Ensure the output is a string
+            output = result.get("output", "")
+            if not isinstance(output, str):
+                output = str(output)
+            
+            parts.append({
+                "function_response": {
+                    "name": tool_name,
+                    "response": {"result": output}
+                }
             })
         
-        return messages
+        # Return a single message with all function response parts
+        return [{
+            "role": "function",
+            "parts": parts
+        }]
 
     def prepare_tool_schemas(self, tools: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Prepare tool schemas for Gemini."""
@@ -289,7 +341,9 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         """Call the Gemini API asynchronously with converted parameters."""
         try:
             gemini_kwargs = self._convert_to_gemini_format(**kwargs)
-            return await self.original_generate_content(**gemini_kwargs)
+            # Use asyncio.to_thread since Gemini doesn't have native async support
+            import asyncio
+            return await asyncio.to_thread(self.original_generate_content, **gemini_kwargs)
         except Exception as e:
             self._handle_api_error(e, kwargs.get('tools', []))
 
@@ -303,9 +357,37 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
     async def stream_response_async(self, **kwargs: Any) -> AsyncGenerator[Any, None]:
         """Stream response from the API asynchronously."""
         kwargs['stream'] = True
-        stream = await self.call_api_async(**kwargs)
-        async for chunk in stream:
-            yield self.parse_stream_chunk(chunk)
+        
+        # Handle streaming differently - Gemini's generate_content with stream=True 
+        # returns an iterator, not an awaitable, so we need to handle it in a thread
+        try:
+            gemini_kwargs = self._convert_to_gemini_format(**kwargs)
+            
+            def _get_streaming_response():
+                """Get the streaming response in a sync context."""
+                return self.original_generate_content(**gemini_kwargs)
+            
+            # Get the stream iterator using asyncio.to_thread
+            import asyncio
+            stream_iterator = await asyncio.to_thread(_get_streaming_response)
+            
+            # Now iterate through the stream in a thread
+            def _get_next_chunk(iterator):
+                """Get the next chunk from the iterator."""
+                try:
+                    return next(iterator), False  # chunk, is_done
+                except StopIteration:
+                    return None, True  # no chunk, is_done
+            
+            # Iterate through chunks asynchronously
+            while True:
+                chunk, is_done = await asyncio.to_thread(_get_next_chunk, stream_iterator)
+                if is_done:
+                    break
+                yield self.parse_stream_chunk(chunk)
+                
+        except Exception as e:
+            self._handle_api_error(e, kwargs.get('tools', []))
 
     def parse_stream_chunk(self, chunk: Any) -> Dict[str, Any]:
         """Parse a streaming chunk into a standardized format."""
@@ -334,21 +416,22 @@ class GeminiHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
             "raw": chunk
         }
 
-    def accumulate_streaming_response(self, chunks: List[Dict[str, Any]]) -> Tuple[str, List[Dict], Any]:
+    def accumulate_streaming_response(self, response: Generator[Any, None, None]) -> Generator[Tuple[Optional[str], Optional[List[Dict]], Any], None, None]:
         """Accumulate streaming chunks into a final response."""
-        text_parts = []
-        all_tool_calls = []
-        raw_chunks = []
-        
-        for chunk in chunks:
-            if chunk.get("text"):
-                text_parts.append(chunk["text"])
-            if chunk.get("tool_calls"):
-                all_tool_calls.extend(chunk["tool_calls"])
-            raw_chunks.append(chunk.get("raw"))
-        
-        return "".join(text_parts), all_tool_calls, raw_chunks
+        # For Gemini, response is a generator of GenerateContentResponse objects
+        for chunk in response:
+            # Parse each chunk using our existing parse_stream_chunk method
+            parsed_chunk = self.parse_stream_chunk(chunk)
+            text = parsed_chunk.get("text")
+            tool_calls = parsed_chunk.get("tool_calls")
+            yield text, tool_calls, chunk
 
-    async def accumulate_streaming_response_async(self, chunks: List[Dict[str, Any]]) -> Tuple[str, List[Dict], Any]:
+    async def accumulate_streaming_response_async(self, response: AsyncGenerator[Any, None]) -> AsyncGenerator[Tuple[Optional[str], Optional[List[Dict]], Any], None]:
         """Accumulate streaming chunks into a final response asynchronously."""
-        return self.accumulate_streaming_response(chunks)
+        # For Gemini, response is an async generator of GenerateContentResponse objects
+        async for chunk in response:
+            # Parse each chunk using our existing parse_stream_chunk method
+            parsed_chunk = self.parse_stream_chunk(chunk)
+            text = parsed_chunk.get("text")
+            tool_calls = parsed_chunk.get("tool_calls")
+            yield text, tool_calls, chunk

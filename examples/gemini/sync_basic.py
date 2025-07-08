@@ -98,7 +98,9 @@ def main():
     print("\n2. Tool calling - Weather:")
     response = client.generate_content(
         "What's the weather like in New York and London?",
-        tools=[get_weather]
+        tools=[get_weather],
+        parallel_tool_execution=True,
+        max_tool_call_rounds=2  # allow separate calls for each city
     )
     print(response)
     
@@ -106,7 +108,9 @@ def main():
     print("\n3. Complex tool with dataclass parameters:")
     response = client.generate_content(
         "Calculate 15 multiplied by 8, then subtract 20 from the result",
-        tools=[calculator]
+        tools=[calculator],
+        parallel_tool_execution=False,
+        max_tool_call_rounds=3  # allow two operations and final response
     )
     print(response)
     
