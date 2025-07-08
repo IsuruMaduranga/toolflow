@@ -33,6 +33,17 @@ def _initialize_execution_context(handler: Handler, **kwargs: Any):
     messages = kwargs.get("messages", [])
     response_format_tool_call_required = False
 
+    # Convert single content string to proper message format
+    contents = kwargs.pop("contents", None)
+    if contents and isinstance(contents, str):
+        # Convert string to user message format
+        messages = [{"role": "user", "content": contents}]
+        kwargs["contents"] = contents  # Keep original contents for Gemini
+    elif contents and not messages:
+        # Use contents as messages if no separate messages provided
+        messages = contents if isinstance(contents, list) else [contents]
+        kwargs["contents"] = contents  # Keep original contents for Gemini
+
     if isinstance(handler, ResponseFormatAdapter):
         response_format = kwargs.pop("response_format", None)
         tools, response_format_tool_call_required = handler.prepare_response_format_tool(tools, response_format)
@@ -101,6 +112,7 @@ def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
         messages.append(handler.build_assistant_message(text, tool_calls, raw_response))
         tool_results = execute_tools_sync(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
         messages.extend(handler.build_tool_result_messages(tool_results))
+        kwargs["contents"] = messages  # Update contents with full conversation history
         remaining_tool_calls -= 1
 
     raise MaxToolCallsError("Max tool calls reached before completing the response.", max_tool_call_rounds)
@@ -146,6 +158,7 @@ async def async_execution_loop(handler: Handler, **kwargs: Any) -> Any:
         messages.append(handler.build_assistant_message(text, tool_calls, raw_response))
         tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling, parallel_tool_execution)
         messages.extend(handler.build_tool_result_messages(tool_results))
+        kwargs["contents"] = messages  # Update contents with full conversation history
         remaining_tool_calls -= 1
 
     raise MaxToolCallsError("Max tool calls reached before completing the response.", max_tool_call_rounds)
@@ -195,7 +208,7 @@ def sync_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Generator[
             messages.append(handler.build_assistant_message(content, accumulated_tool_calls, None))
             tool_results = execute_tools_sync(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
             messages.extend(handler.build_tool_result_messages(tool_results))
-            kwargs["messages"] = messages
+            kwargs["contents"] = messages  # Update contents with full conversation history
             remaining_tool_calls -= 1
             continue
         else:
@@ -214,8 +227,11 @@ async def async_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Asy
 
     if not tools:
         chunk_count = 0
-        response = await handler.call_api_async(**kwargs)
-        async for text, _, raw_chunk in handler.accumulate_streaming_response_async(response):
+        # Use stream_response_async for streaming
+        async for chunk_data in handler.stream_response_async(**kwargs):
+            text = chunk_data.get("text")
+            raw_chunk = chunk_data  # The parsed chunk data
+            
             if full_response:
                 yield raw_chunk
             elif text is not None:
@@ -258,7 +274,7 @@ async def async_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Asy
             messages.append(handler.build_assistant_message(content, accumulated_tool_calls, None))
             tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling, parallel_tool_execution)
             messages.extend(handler.build_tool_result_messages(tool_results))
-            kwargs["messages"] = messages
+            kwargs["contents"] = messages  # Update contents with full conversation history
             remaining_tool_calls -= 1
             continue
         else:
