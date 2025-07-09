@@ -305,7 +305,7 @@ IMPORTANT: Your response must use the provide_final_answer tool with a properly 
     def _format_tool_call(self, function_call) -> Dict[str, Any]:
         """Format a Gemini function call into standard tool call format."""
         # Generate a unique ID for the tool call
-        tool_call_id = f"call_{hash(str(function_call))}"[:12]
+        tool_call_id = f"call_{uuid.uuid4()}"
         
         # Store the mapping from tool_call_id to tool name
         self._tool_call_name_map[tool_call_id] = function_call.name
