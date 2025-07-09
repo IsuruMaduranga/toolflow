@@ -10,7 +10,7 @@ from toolflow.core import (
     set_executor
 )
 from toolflow.core import set_async_yield_frequency
-from toolflow.providers import from_openai, from_anthropic, from_gemini
+from toolflow.providers import from_openai, from_anthropic, from_gemini, from_llama
 from toolflow.core import tool
 from . import errors
 
@@ -29,6 +29,7 @@ __all__ = [
     "from_openai",
     "from_anthropic",
     "from_gemini",
+    "from_llama",
     
     # Utilities and decorators
     "tool",
