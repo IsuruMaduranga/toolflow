@@ -13,7 +13,7 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-def from_openai(client: Union[openai.OpenAI, openai.AsyncOpenAI], full_response: bool = False) -> OpenAIProtocol | AsyncOpenAIProtocol:
+def from_openai(client: Union["openai.OpenAI", "openai.AsyncOpenAI"], full_response: bool = False) -> OpenAIProtocol | AsyncOpenAIProtocol:
     """
     Create a toolflow wrapper around an existing OpenAI client.
     
