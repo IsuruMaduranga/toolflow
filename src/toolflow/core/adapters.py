@@ -233,8 +233,8 @@ class MessageAdapter(ABC):
                 
                 tool_schemas.append(schema)
                 # Create async function that captures the tool and tool name
-                async def call_tool_async(args):
-                    return await tool.call_tool(tool_name, arguments=args)
+                async def call_tool_async(name, args):
+                    return await tool.call_tool(name, arguments=args)
                 call_tool_async.__is_toolflow_dynamic_tool__ = True
                 tool_map[tool_name] = call_tool_async
             return tool_schemas, tool_map

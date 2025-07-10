@@ -278,7 +278,7 @@ def run_sync_tool(
         # Prepare arguments by converting dictionaries to Pydantic models when needed
         if hasattr(tool_func, "__is_toolflow_dynamic_tool__"):
             # Dynamic sync tools expect a single dict argument  
-            result = tool_func(tool_call["function"]["arguments"])
+            result = tool_func(tool_call["function"]["name"], tool_call["function"]["arguments"])
         else:
             # Regular sync tools expect **kwargs
             prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
@@ -325,7 +325,7 @@ async def run_async_tool(
         # Prepare arguments by converting dictionaries to Pydantic models when needed
         if hasattr(tool_func, "__is_toolflow_dynamic_tool__"):
             # Dynamic async tools expect a single dict argument
-            result = await tool_func(tool_call["function"]["arguments"])
+            result = await tool_func(tool_call["function"]["name"], tool_call["function"]["arguments"])
         else:
             # Regular async tools expect **kwargs
             prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
