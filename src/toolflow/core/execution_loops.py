@@ -69,14 +69,6 @@ def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
         text, _, raw_response = handler.parse_response(response)
         _check_max_tokens(handler, response)
         return raw_response if full_response else text
-    
-    # Test whether all tools are sync
-    for tool in tools:
-        if asyncio.iscoroutinefunction(tool):
-            raise RuntimeError("Async tools are not supported in sync toolflow execution")
-        # Check for async-only toolkits (like MCP toolkits)
-        if isinstance(tool, BaseAsyncToolKit):
-            raise RuntimeError("Some tools require async execution (e.g., MCP ToolKit). Use an async client.")
 
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     kwargs["tools"] = tool_schemas
@@ -123,7 +115,7 @@ async def async_execution_loop(handler: Handler, **kwargs: Any) -> Any:
         _check_max_tokens(handler, response)
         return raw_response if full_response else text
 
-    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    tool_schemas, tool_map = await handler.prepare_tool_schemas_async(tools)
     kwargs["tools"] = tool_schemas
     remaining_tool_calls = max_tool_call_rounds
     remaining_retry_count = max_response_format_retries
@@ -170,13 +162,6 @@ def sync_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Generator[
             elif text is not None:
                 yield text
         return
-    
-    for tool in tools:
-        if asyncio.iscoroutinefunction(tool):
-            raise RuntimeError("Async tools are not supported in sync streaming execution")
-        # Check for async-only toolkits (like MCP toolkits)
-        if isinstance(tool, BaseAsyncToolKit):
-            raise RuntimeError("Some tools require async execution (e.g., MCP ToolKit). Use an async client.")
 
     tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
     kwargs["tools"] = tool_schemas
@@ -234,7 +219,7 @@ async def async_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Asy
                     await asyncio.sleep(0)
         return
 
-    tool_schemas, tool_map = handler.prepare_tool_schemas(tools)
+    tool_schemas, tool_map = await handler.prepare_tool_schemas_async(tools)
     kwargs["tools"] = tool_schemas
     remaining_tool_calls = max_tool_call_rounds
 

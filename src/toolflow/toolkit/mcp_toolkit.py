@@ -4,30 +4,33 @@ from fastmcp import Client as FastMCPClient
 
 class MCPToolkit(BaseAsyncToolKit):
     """Async MCP toolkit implementation that wraps a fastmcp.Client."""
-    
-    __requires_async__ = True
 
     def __init__(self, client: FastMCPClient):
         self._client = client
 
     async def list_tools(self) -> List[Dict[str, Any]]:
-        return await self._client.list_tools()
+        if not self._client.is_connected():
+            await self._client._connect()
+            return await self._client.list_tools()
 
     async def call_tool(self, name: str, args: Dict[str, Any]) -> Any:
-        return await self._client.call_tool(name, args)
+        if not self._client.is_connected():
+            await self._client._connect()
+            return await self._client.call_tool(name, args)
 
     async def ping(self) -> bool:
-        try:
-            await self.list_tools()
-            return True
-        except Exception:
-            return False
+        if not self._client.is_connected():
+            await self._client._connect()
+        return await self._client.ping()
 
     async def close(self) -> None:
-        await self._client.close()
+        if self._client.is_connected(): 
+            await self._client.close()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "MCPToolkit":
+        if not self._client.is_connected():
+            await self._client._connect()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
