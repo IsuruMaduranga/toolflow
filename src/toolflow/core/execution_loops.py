@@ -1,13 +1,14 @@
 from __future__ import annotations
-from typing import Any, Generator, AsyncGenerator, Union, List, Dict
+import json
+from typing import Any, Generator, AsyncGenerator, Union
 import asyncio
-from pydantic import ValidationError
 from .adapters import TransportAdapter, MessageAdapter, ResponseFormatAdapter
 from .utils import filter_toolflow_params, process_response_format
-from .constants import RESPONSE_FORMAT_TOOL_NAME
 from .tool_execution import execute_tools_sync, execute_tools_async
 from .exceptions import MaxToolCallsError, MaxTokensError, ResponseFormatError
-from .protocols import BaseToolKit, BaseAsyncToolKit
+from .logging_utils import get_toolflow_logger
+
+logger = get_toolflow_logger("execution_loops")
 
 Handler = Union[TransportAdapter, MessageAdapter, ResponseFormatAdapter]
 
@@ -95,9 +96,9 @@ def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
             return raw_response if full_response else text
 
         messages.append(handler.build_assistant_message(text, tool_calls, raw_response))
-        tool_results = execute_tools_sync(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
-        messages.extend(handler.build_tool_result_messages(tool_results))
         remaining_tool_calls -= 1
+        tool_results = execute_tools_sync(tool_calls, tool_map, parallel_tool_execution, graceful_error_handling, remaining_tool_calls - 1)
+        messages.extend(handler.build_tool_result_messages(tool_results))
 
     raise MaxToolCallsError("Max tool calls reached before completing the response.", max_tool_call_rounds)
 
@@ -138,11 +139,11 @@ async def async_execution_loop(handler: Handler, **kwargs: Any) -> Any:
 
         if not tool_calls:
             return raw_response if full_response else text
-
+        
         messages.append(handler.build_assistant_message(text, tool_calls, raw_response))
-        tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling, parallel_tool_execution)
-        messages.extend(handler.build_tool_result_messages(tool_results))
         remaining_tool_calls -= 1
+        tool_results = await execute_tools_async(tool_calls, tool_map, graceful_error_handling, parallel_tool_execution, remaining_tool_calls - 1)
+        messages.extend(handler.build_tool_result_messages(tool_results))
 
     raise MaxToolCallsError("Max tool calls reached before completing the response.", max_tool_call_rounds)
 
@@ -185,10 +186,10 @@ def sync_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Generator[
         if accumulated_tool_calls:
             content = accumulated_content if accumulated_content else None
             messages.append(handler.build_assistant_message(content, accumulated_tool_calls, None))
-            tool_results = execute_tools_sync(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling)
+            remaining_tool_calls -= 1
+            tool_results = execute_tools_sync(accumulated_tool_calls, tool_map, parallel_tool_execution, graceful_error_handling, remaining_tool_calls - 1)
             messages.extend(handler.build_tool_result_messages(tool_results))
             kwargs["messages"] = messages
-            remaining_tool_calls -= 1
             continue
         else:
             break
@@ -248,10 +249,10 @@ async def async_streaming_execution_loop(handler: Handler, **kwargs: Any) -> Asy
         if accumulated_tool_calls:
             content = accumulated_content if accumulated_content else None
             messages.append(handler.build_assistant_message(content, accumulated_tool_calls, None))
-            tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling, parallel_tool_execution)
+            remaining_tool_calls -= 1
+            tool_results = await execute_tools_async(accumulated_tool_calls, tool_map, graceful_error_handling, parallel_tool_execution, remaining_tool_calls - 1)
             messages.extend(handler.build_tool_result_messages(tool_results))
             kwargs["messages"] = messages
-            remaining_tool_calls -= 1
             continue
         else:
             break

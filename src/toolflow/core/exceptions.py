@@ -30,3 +30,8 @@ class MissingAnnotationError(TypeError):
 
 class UndescribableTypeError(TypeError):
     """Raised when a parameter's annotation cannot be rendered as JSON‑Schema."""
+
+class ToolExecutionError(Exception):
+    """Raised when a tool execution error occurs."""
+    def __init__(self, message: str):
+        super().__init__(message)

@@ -2,9 +2,13 @@ import asyncio
 import inspect
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Generator, List, Dict, Tuple, Optional
-from .utils import get_structured_output_tool, extract_toolkit_methods, _get_cached_toolkit_schema, _cache_toolkit_schema
+from .utils import get_structured_output_tool, extract_toolkit_methods, _get_cached_toolkit_schema, _cache_toolkit_schema, get_tool_schema
 from .constants import RESPONSE_FORMAT_TOOL_NAME
 from .protocols import BaseToolKit, BaseAsyncToolKit
+from .logging_utils import get_toolflow_logger, log_toolkit_connection_error
+
+# custom logger
+logger = get_toolflow_logger("adapters")
 
 class TransportAdapter(ABC):
     """
@@ -100,7 +104,6 @@ class MessageAdapter(ABC):
 
     def get_tool_schema(self, tool: Any) -> Dict[str, Any]:
         """Get the tool schema for the tool."""
-        from .utils import get_tool_schema
         return get_tool_schema(tool)
     
     def build_response_format_retry_message(self) -> Dict[str, Any]:
@@ -120,8 +123,6 @@ class MessageAdapter(ABC):
                 raise RuntimeError("Async functions are not supported in sync toolflow execution")
             else:
                 tool_schemas, tool_map = self._prepare_tool_schema(tool, tool_schemas, tool_map)
-            if tool_schemas:
-                tool_map[RESPONSE_FORMAT_TOOL_NAME] = lambda args: tool_schemas[-1]
         return tool_schemas, tool_map
     
     async def prepare_tool_schemas_async(self, tools: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -216,7 +217,13 @@ class MessageAdapter(ABC):
         # Check if tool implements BaseAsyncToolKit protocol (async toolkits)
         if isinstance(tool, BaseAsyncToolKit):
             # Handle async BaseAsyncToolKit protocol
-            schemas = await tool.list_tools()
+            schemas = []
+            try:
+                schemas = await tool.list_tools()
+            except Exception as e:
+                log_toolkit_connection_error(logger, tool.__class__.__name__, e)
+                return tool_schemas, tool_map  # Return current state instead of empty list
+            
             for schema in schemas:
                 tool_name = schema["function"]["name"]
                 
@@ -226,8 +233,9 @@ class MessageAdapter(ABC):
                 
                 tool_schemas.append(schema)
                 # Create async function that captures the tool and tool name
-                async def call_tool_async(args, t=tool, n=tool_name):
-                    return await t.call_tool(n, args)
+                async def call_tool_async(args):
+                    return await tool.call_tool(tool_name, arguments=args)
+                call_tool_async.__is_toolflow_dynamic_tool__ = True
                 tool_map[tool_name] = call_tool_async
             return tool_schemas, tool_map
         else:
