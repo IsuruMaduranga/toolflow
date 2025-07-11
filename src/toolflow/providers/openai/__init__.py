@@ -3,17 +3,23 @@ OpenAI provider for toolflow.
 
 This module provides factory functions to create toolflow wrappers around OpenAI clients.
 """
-from typing import Union
+from typing import Union, overload
 from .wrappers import OpenAIWrapper, AsyncOpenAIWrapper
-from .protocols import OpenAIProtocol, AsyncOpenAIProtocol
 
 try:
     import openai
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
+@overload
+def from_openai(client: openai.OpenAI, full_response: bool = False) -> OpenAIWrapper:
+    ...
 
-def from_openai(client: Union[openai.OpenAI, openai.AsyncOpenAI], full_response: bool = False) -> OpenAIProtocol | AsyncOpenAIProtocol:
+@overload
+def from_openai(client: openai.AsyncOpenAI, full_response: bool = False) -> AsyncOpenAIWrapper:
+    ...
+
+def from_openai(client, full_response: bool = False):
     """
     Create a toolflow wrapper around an existing OpenAI client.
     

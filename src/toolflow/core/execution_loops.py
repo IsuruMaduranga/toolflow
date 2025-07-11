@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from typing import Any, Generator, AsyncGenerator, Union
+from typing import Any, Generator, AsyncGenerator, Union, Coroutine
 import asyncio
 from .adapters import TransportAdapter, MessageAdapter, ResponseFormatAdapter
 from .utils import filter_toolflow_params, process_response_format
@@ -57,7 +57,7 @@ def _create_error_message(max_response_format_retries: int, error_message: str) 
     
     """
 
-def sync_execution_loop(handler: Handler, **kwargs: Any) -> Any:
+def sync_execution_loop(handler: Handler, **kwargs: Any) -> Coroutine[Any, Any, Any]:
     (
         kwargs, tools, messages,
         max_tool_call_rounds, max_response_format_retries,
