@@ -7,6 +7,10 @@ from typing import List, Dict, Callable, Any, Coroutine, Optional, Union, get_or
 import inspect
 from pydantic import TypeAdapter
 from .constants import RESPONSE_FORMAT_TOOL_NAME
+from .logging_utils import get_toolflow_logger, log_tool_execution_error
+from .exceptions import ToolExecutionError
+
+logger = get_toolflow_logger("tool_execution")
 
 # ===== GLOBAL EXECUTOR (SHARED BY SYNC AND ASYNC) =====
 
@@ -71,7 +75,8 @@ async def execute_tools_async(
     tool_calls: List[Dict[str, Any]],
     tool_map: Dict[str, Callable[..., Any]],
     graceful_error_handling: bool = True,
-    parallel: bool = False
+    parallel: bool = False,
+    remaining_tool_calls: int = 0
 ) -> List[Dict[str, Any]]:
     loop = asyncio.get_running_loop()
     results = []
@@ -96,10 +101,10 @@ async def execute_tools_async(
                     raise KeyError(f"Unknown tool: {tool_name}")
 
             if asyncio.iscoroutinefunction(tool_func):
-                coro = run_async_tool(tool_call, tool_func, graceful_error_handling)
+                coro = run_async_tool(tool_call, tool_func, graceful_error_handling, remaining_tool_calls)
             else:
                 coro = loop.run_in_executor(
-                    _get_async_executor(), run_sync_tool, tool_call, tool_func, graceful_error_handling
+                    _get_async_executor(), run_sync_tool, tool_call, tool_func, graceful_error_handling, remaining_tool_calls
                 )
             all_tasks.append(coro)
 
@@ -124,10 +129,10 @@ async def execute_tools_async(
                     raise KeyError(f"Unknown tool: {tool_name}")
 
             if asyncio.iscoroutinefunction(tool_func):
-                result = await run_async_tool(tool_call, tool_func, graceful_error_handling)
+                result = await run_async_tool(tool_call, tool_func, graceful_error_handling, remaining_tool_calls)
             else:
                 result = await loop.run_in_executor(
-                    _get_async_executor(), run_sync_tool, tool_call, tool_func, graceful_error_handling
+                    _get_async_executor(), run_sync_tool, tool_call, tool_func, graceful_error_handling, remaining_tool_calls
                 )
             results.append(result)
 
@@ -137,7 +142,8 @@ def execute_tools_sync(
     tool_calls: List[Dict[str, Any]],
     tool_map: Dict[str, Callable[..., Any]],
     parallel: bool = False,
-    graceful_error_handling: bool = True
+    graceful_error_handling: bool = True,
+    remaining_tool_calls: int = 0
 ) -> List[Dict[str, Any]]:
     if not tool_calls:
         return []
@@ -172,7 +178,7 @@ def execute_tools_sync(
                 else:
                     raise KeyError(f"Unknown tool: {tool_name}")
 
-            futures.append(executor.submit(run_sync_tool, tool_call, tool_func, graceful_error_handling))
+            futures.append(executor.submit(run_sync_tool, tool_call, tool_func, graceful_error_handling, remaining_tool_calls))
 
         done, _ = wait(futures)
         for future in done:
@@ -195,7 +201,7 @@ def execute_tools_sync(
                 else:
                     raise KeyError(f"Unknown tool: {tool_name}")
 
-            result = run_sync_tool(tool_call, tool_func, graceful_error_handling)
+            result = run_sync_tool(tool_call, tool_func, graceful_error_handling, remaining_tool_calls)
             results.append(result)
 
     return results
@@ -262,39 +268,72 @@ def _convert_argument_type(annotation: Any, value: Any) -> Any:
             f"Failed to convert value {value!r} to type {annotation}: {e}"
         ) from e
 
-def run_sync_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Any], graceful_error_handling: bool = True) -> Dict[str, Any]:
+def run_sync_tool(
+        tool_call: Dict[str, Any],
+        tool_func: Callable[..., Any],
+        graceful_error_handling: bool = True,
+        remaining_tool_calls: int = 0
+    ) -> Dict[str, Any]:
     try:
         # Prepare arguments by converting dictionaries to Pydantic models when needed
-        prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
-        result = tool_func(**prepared_args)
+        if hasattr(tool_func, "__is_toolflow_dynamic_tool__"):
+            # Dynamic sync tools expect a single dict argument  
+            result = tool_func(tool_call["function"]["name"], tool_call["function"]["arguments"])
+        else:
+            # Regular sync tools expect **kwargs
+            prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
+            result = tool_func(**prepared_args)
         return {"tool_call_id": tool_call["id"], "output": result}
     except Exception as e:
+        tool_name = tool_call["function"]["name"]
+        
         if graceful_error_handling:
-            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
+            if tool_name == RESPONSE_FORMAT_TOOL_NAME:
                 return {
                     "tool_call_id": tool_call["id"],
                     "output": f"Error parsing response format: {e}. Try again",
                     "is_error": True,
                 }
+            
+            output = f"Error executing tool {tool_name} Error: {e}"
+            if remaining_tool_calls > 0:
+                output += f"Info: You have {remaining_tool_calls} attempts left. Try again or try a different tool to achieve your goal."
+            else:
+                output += f"Info: You have no tool call attempts left. Program will crash if use tool calls. Try a different method."
             return {
                 "tool_call_id": tool_call["id"],
-                "output": f"Error executing tool {tool_call['function']['name']}: {e}",
+                "output": output,
                 "is_error": True,
             }
-        else:
-            error_msg = f"Error executing tool {tool_call['function']['name']}: {e}"
-            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                raise e
-            raise type(e)(error_msg) from e
+            
+        if tool_name == RESPONSE_FORMAT_TOOL_NAME:
+            raise e
+        
+        # Log the error with user-friendly message
+        if hasattr(tool_func, "__is_toolflow_dynamic_tool__"):
+            log_tool_execution_error(logger, tool_name, e)
+        raise ToolExecutionError(f"Tool '{tool_name}' failed: {e}") from None
             
 
-async def run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Coroutine[Any, Any, Any]], graceful_error_handling: bool = True) -> Dict[str, Any]:
+async def run_async_tool(
+        tool_call: Dict[str, Any],
+        tool_func: Callable[..., Coroutine[Any, Any, Any]],
+        graceful_error_handling: bool = True,
+        remaining_tool_calls: int = 0
+    ) -> Dict[str, Any]:
     try:
         # Prepare arguments by converting dictionaries to Pydantic models when needed
-        prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
-        result = await tool_func(**prepared_args)
+        if hasattr(tool_func, "__is_toolflow_dynamic_tool__"):
+            # Dynamic async tools expect a single dict argument
+            result = await tool_func(tool_call["function"]["name"], tool_call["function"]["arguments"])
+        else:
+            # Regular async tools expect **kwargs
+            prepared_args = _prepare_tool_arguments(tool_func, tool_call["function"]["arguments"])
+            result = await tool_func(**prepared_args)
         return {"tool_call_id": tool_call["id"], "output": result}
     except Exception as e:
+        tool_name = tool_call["function"]["name"]
+        
         if graceful_error_handling:
             if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
                 return {
@@ -302,13 +341,22 @@ async def run_async_tool(tool_call: Dict[str, Any], tool_func: Callable[..., Cor
                     "output": f"Error parsing response format: {e}. Try again",
                     "is_error": True,
                 }
+            
+            output = f"Error executing tool {tool_name} Error: {e}"
+            if remaining_tool_calls > 0:
+                output += f"Info: You have {remaining_tool_calls} attempts left. Try again or try a different tool to achieve your goal."
+            else:
+                output += f"Info: You have no tool call attempts left. Program will crash if use tool calls. Try a different method."
             return {
                 "tool_call_id": tool_call["id"],
-                "output": f"Error executing tool {tool_call['function']['name']}: {e}",
+                "output": output,
                 "is_error": True,
             }
-        else:
-            error_msg = f"Error executing tool {tool_call['function']['name']}: {e}"
-            if tool_call["function"]["name"] == RESPONSE_FORMAT_TOOL_NAME:
-                raise e
-            raise type(e)(error_msg) from e
+        
+        if tool_name == RESPONSE_FORMAT_TOOL_NAME:
+            raise e
+        
+        # Log the error with user-friendly message
+        if hasattr(tool_func, "__is_toolflow_dynamic_tool__"):
+            log_tool_execution_error(logger, tool_name, e)
+        raise ToolExecutionError(f"Tool '{tool_name}' failed: {e}") from None

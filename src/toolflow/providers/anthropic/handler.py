@@ -444,9 +444,6 @@ class AnthropicHandler(TransportAdapter, MessageAdapter, ResponseFormatAdapter):
         # Get OpenAI-format schemas from parent
         openai_tool_schemas, tool_map = super().prepare_tool_schemas(tools)
         
-        # Store tool map for error handling
-        self._last_tool_map = tool_map
-        
         # Convert OpenAI format to Anthropic format
         anthropic_tool_schemas = []
         for openai_schema in openai_tool_schemas:

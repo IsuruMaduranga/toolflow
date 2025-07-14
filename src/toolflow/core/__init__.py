@@ -1,4 +1,5 @@
 from .adapters import TransportAdapter, MessageAdapter, ResponseFormatAdapter
+from .protocols import BaseToolKit
 from .mixins import ExecutorMixin
 from .decorators import tool
 from .tool_execution import set_max_workers, get_max_workers, set_executor
@@ -7,16 +8,28 @@ from .utils import filter_toolflow_params, extract_toolkit_methods, clear_toolki
 from .exceptions import MaxToolCallsError, MaxTokensError, ResponseFormatError, MissingAnnotationError, UndescribableTypeError
 
 __all__ = [
+    # Adapters
     "TransportAdapter",
     "MessageAdapter",
     "ResponseFormatAdapter",
+
+    # Protocols
+    "BaseToolKit",
+
+    # Mixins
     "ExecutorMixin",
+
+    # Decorators
     "tool",
+
+    # Exceptions
     "MaxToolCallsError",
     "MaxTokensError",
     "ResponseFormatError",
     "MissingAnnotationError",
     "UndescribableTypeError",
+
+    # Functions
     "set_max_workers",
     "get_max_workers",
     "set_executor",
@@ -24,5 +37,5 @@ __all__ = [
     "filter_toolflow_params",
     "extract_toolkit_methods",
     "clear_toolkit_schema_cache",
-    "get_toolkit_schema_cache_size"
+    "get_toolkit_schema_cache_size",
 ]

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Coroutine, Iterator, AsyncIterator
 from .execution_loops import (
     sync_execution_loop, sync_streaming_execution_loop,
     async_execution_loop, async_streaming_execution_loop
@@ -20,7 +20,7 @@ class ExecutorMixin:
         
         return kwargs
     
-    def _create_sync(self, **kwargs: Any) -> Any:
+    def _create_sync(self, **kwargs: Any) -> Iterator[Any] | Coroutine[Any, Any, Any]:
         """Execute sync create with appropriate execution loop."""
         kwargs = self._prepare_kwargs(**kwargs)
         
@@ -29,11 +29,11 @@ class ExecutorMixin:
         else:
             return sync_execution_loop(handler=self.handler, **kwargs)
     
-    async def _create_async(self, **kwargs: Any) -> Any:
+    async def _create_async(self, **kwargs: Any) -> AsyncIterator[Any] | Coroutine[Any, Any, Any]:
         """Execute async create with appropriate execution loop.""" 
         kwargs = self._prepare_kwargs(**kwargs)
         
         if kwargs.get("stream", False):
             return async_streaming_execution_loop(handler=self.handler, **kwargs)
         else:
-            return await async_execution_loop(handler=self.handler, **kwargs) 
+            return await async_execution_loop(handler=self.handler, **kwargs)

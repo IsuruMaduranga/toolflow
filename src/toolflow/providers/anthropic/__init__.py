@@ -3,7 +3,7 @@ Anthropic provider for toolflow.
 
 This module provides factory functions to create toolflow wrappers around Anthropic clients.
 """
-from typing import Union
+from typing import Union, overload
 from .wrappers import AnthropicWrapper, AsyncAnthropicWrapper
 from .protocols import AnthropicProtocol, AsyncAnthropicProtocol
 
@@ -13,9 +13,16 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
+@overload
+def from_anthropic(client: anthropic.Anthropic, full_response: bool = False) -> AnthropicWrapper:
+    ...
 
-def from_anthropic(client: Union[anthropic.Anthropic, anthropic.AsyncAnthropic], full_response: bool = False) -> AnthropicProtocol | AsyncAnthropicProtocol:
-    """
+@overload
+def from_anthropic(client: anthropic.AsyncAnthropic, full_response: bool = False) -> AsyncAnthropicWrapper:
+    ...
+
+def from_anthropic(client, full_response: bool = False):
+    """ 
     Create a toolflow wrapper around an existing Anthropic client.
     
     Automatically detects whether the client is synchronous (Anthropic) or 
@@ -51,7 +58,6 @@ def from_anthropic(client: Union[anthropic.Anthropic, anthropic.AsyncAnthropic],
             content = await client.messages.create(...)
         
         # With tools
-        @toolflow.tool
         def get_weather(city: str) -> str:
             return f"Weather in {city}: Sunny"
         

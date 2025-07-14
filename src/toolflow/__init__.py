@@ -12,6 +12,7 @@ from toolflow.core import (
 from toolflow.core import set_async_yield_frequency
 from toolflow.providers import from_openai, from_anthropic, from_gemini, from_llama
 from toolflow.core import tool
+from toolflow.toolkit import ToolKit
 from . import errors
 
 __version__ = "0.3.2"
@@ -33,6 +34,9 @@ __all__ = [
     
     # Utilities and decorators
     "tool",
+    
+    # Toolkit factory
+    "ToolKit",
     
     # Exceptions
     "errors",
