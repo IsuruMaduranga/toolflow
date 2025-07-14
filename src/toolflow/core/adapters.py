@@ -113,7 +113,7 @@ class MessageAdapter(ABC):
             "content": f"Call the {RESPONSE_FORMAT_TOOL_NAME} to provide the final response."
         }
 
-        def prepare_tool_schemas(self, tools: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def prepare_tool_schemas(self, tools: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Prepare tool schemas and tool map for sync toolflow execution."""
         tool_schemas, tool_map = [], {}
         for tool in tools:
